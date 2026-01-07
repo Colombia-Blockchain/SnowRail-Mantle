@@ -1,0 +1,26 @@
+{
+  "network": "mantleSepolia",
+  "chainId": 5003,
+  "blockExplorer": "https://sepolia.mantlescan.xyz",
+  "contracts": {
+    "Settlement": {
+      "address": "0xae6E14caD8D4f43947401fce0E4717b8D17b4382",
+      "deploymentTx": "0xf5b8cee4f0cce8535b37cfde9ff15b1b7938e387e509bcbcac9a460481fa61e8",
+      "deploymentBlock": 33135335,
+      "deployedAt": "2026-01-07T19:49:05.578Z",
+      "deployer": "0x40C7fa08031dB321245a2f96E6064D2cF269f18B",
+      "constructorArgs": [
+        "0x40C7fa08031dB321245a2f96E6064D2cF269f18B"
+      ]
+    },
+    "ZKMixer": {
+      "address": "0x9C7dC7C8D6156441D5D5eCF43B33F960331c4600",
+      "deploymentTx": "0x08ab51483f3473ad45567256407a48cee46a310afebb7980dcffc5ce7172f86f",
+      "deploymentBlock": 33135338,
+      "deployedAt": "2026-01-07T19:49:11.962Z",
+      "deployer": "0x40C7fa08031dB321245a2f96E6064D2cF269f18B",
+      "constructorArgs": []
+    }
+  },
+  "deployedAt": "2026-01-07T19:48:58.952Z"
+}

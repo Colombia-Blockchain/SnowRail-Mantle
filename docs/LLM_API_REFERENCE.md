@@ -1,16 +1,20 @@
-# Cronos Snow Rail - LLM API Reference
+# SnowRail Mantle - LLM API Reference
 
-Complete API documentation for AI/LLM integration with the Cronos Agentic Treasury system.
+Complete API documentation for AI/LLM integration with the SnowRail Agentic Treasury system on Mantle.
 
 ## Overview
 
-Snow Rail is an autonomous treasury system on Cronos blockchain that enables:
+SnowRail is an autonomous treasury system on Mantle blockchain that enables:
 - **Payment Intents**: Conditional payments with AI agent evaluation
 - **Privacy Mixer**: ZK-SNARK based private transfers (deposit/withdraw)
+- **Oracle Integration**: Real-time Pyth Oracle price feeds
+- **RWA Support**: USDY and mETH with yield tracking
+- **DeFi Integration**: Merchant Moe swaps and Lendle lending
+- **KYC Compliance**: On-chain KYC attestations for RWA access
 - **MCP Protocol**: Model Context Protocol for AI assistant integration
 
 **Base URL**: `http://localhost:4000` (development)
-**Network**: Cronos Testnet (Chain ID: 338)
+**Network**: Mantle Sepolia (Chain ID: 5003)
 
 ---
 
@@ -20,10 +24,15 @@ Snow Rail is an autonomous treasury system on Cronos blockchain that enables:
 2. [Payment Intent Endpoints](#payment-intent-endpoints)
 3. [Agent Endpoints](#agent-endpoints)
 4. [Mixer (Privacy) Endpoints](#mixer-privacy-endpoints)
-5. [MCP Protocol Endpoints](#mcp-protocol-endpoints)
-6. [Smart Contract: Settlement](#smart-contract-settlement)
-7. [Data Types](#data-types)
-8. [Error Codes](#error-codes)
+5. [Oracle Endpoints (Pyth)](#oracle-endpoints-pyth)
+6. [RWA Endpoints (USDY & mETH)](#rwa-endpoints-usdy--meth)
+7. [Swap Endpoints (Merchant Moe)](#swap-endpoints-merchant-moe)
+8. [Lending Endpoints (Lendle)](#lending-endpoints-lendle)
+9. [KYC Endpoints](#kyc-endpoints)
+10. [MCP Protocol Endpoints](#mcp-protocol-endpoints)
+11. [Smart Contract: Settlement](#smart-contract-settlement)
+12. [Data Types](#data-types)
+13. [Error Codes](#error-codes)
 
 ---
 
@@ -643,6 +652,701 @@ Simulate withdrawal to generate proof without executing on-chain.
 
 ---
 
+## Oracle Endpoints (Pyth)
+
+Real-time price feeds from Pyth Network for conditional payments and DeFi operations.
+
+### GET /api/providers/oracle/feeds
+
+List all supported price feeds on Mantle.
+
+**Request**: None
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "FEEDS_LIST",
+  "message": "Supported Pyth Oracle price feeds on Mantle",
+  "data": {
+    "feeds": ["ETH/USD", "BTC/USD", "MNT/USD", "USDC/USD", "USDT/USD"],
+    "pythContract": "0xA2aa501b19aff244D90cc15a4Cf739D2725B5729",
+    "network": "Mantle Sepolia"
+  }
+}
+```
+
+### GET /api/providers/oracle/price/:base/:quote
+
+Get current price for a trading pair.
+
+**Path Parameters**:
+- `base` (string): Base currency (e.g., "ETH", "MNT")
+- `quote` (string): Quote currency (e.g., "USD")
+
+**Example**: `GET /api/providers/oracle/price/ETH/USD`
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "PRICE_FETCHED",
+  "message": "Price for ETH/USD retrieved from Pyth Oracle",
+  "data": {
+    "pair": "ETH/USD",
+    "price": 3147.24,
+    "confidence": 31.47,
+    "timestamp": 1767816393000,
+    "source": "pyth"
+  }
+}
+```
+
+### GET /api/providers/oracle/price-with-proof/:base/:quote
+
+Get price with cryptographic proof for on-chain verification.
+
+**Path Parameters**:
+- `base` (string): Base currency
+- `quote` (string): Quote currency
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "PRICE_WITH_PROOF_FETCHED",
+  "message": "Price with ZK-compatible proof for ETH/USD",
+  "data": {
+    "pair": "ETH/USD",
+    "price": 3146.21,
+    "proof": {
+      "publishTime": 1767816474,
+      "attestations": ["UE5BVQEAAAADuAEAAAA..."],
+      "merkleProof": []
+    }
+  }
+}
+```
+
+---
+
+## RWA Endpoints (USDY & mETH)
+
+Real World Asset integration for yield-bearing tokens on Mantle.
+
+### GET /api/providers/rwa/assets
+
+List all supported RWA assets.
+
+**Request**: None
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "ASSETS_LIST",
+  "message": "Supported RWA assets on Mantle",
+  "data": {
+    "assets": [
+      {
+        "symbol": "USDY",
+        "name": "US Dollar Yield",
+        "contract": "0x5bE26527e817998A7206475496fDE1E68957c5A6",
+        "underlying": "US Treasury Bills",
+        "issuer": "Ondo Finance"
+      },
+      {
+        "symbol": "mETH",
+        "name": "Mantle Staked ETH",
+        "contract": "0xcDA86A272531e8640cD7F1a92c01839911B90bb0",
+        "underlying": "Ethereum",
+        "issuer": "Mantle"
+      }
+    ],
+    "network": "Mantle Sepolia"
+  }
+}
+```
+
+### GET /api/providers/rwa/yield/:asset
+
+Get current yield rate for an RWA asset.
+
+**Path Parameters**:
+- `asset` (string): Asset symbol ("USDY" or "mETH")
+
+**Example**: `GET /api/providers/rwa/yield/USDY`
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "YIELD_FETCHED",
+  "message": "Yield rate for USDY retrieved",
+  "data": {
+    "asset": "USDY",
+    "yieldRate": 525,
+    "yieldPercent": "5.25%"
+  }
+}
+```
+
+### GET /api/providers/rwa/balance/:asset/:address
+
+Get RWA token balance for an address.
+
+**Path Parameters**:
+- `asset` (string): Asset symbol
+- `address` (string): Ethereum address
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "BALANCE_FETCHED",
+  "message": "USDY balance for 0x...",
+  "data": {
+    "asset": "USDY",
+    "balance": "1000.50",
+    "address": "0x..."
+  }
+}
+```
+
+### GET /api/providers/rwa/yield/pending/:asset/:address
+
+Get pending yield for a holder.
+
+**Path Parameters**:
+- `asset` (string): Asset symbol
+- `address` (string): Holder address
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "PENDING_YIELD_FETCHED",
+  "message": "Pending yield for 0x... on USDY",
+  "data": {
+    "asset": "USDY",
+    "holder": "0x...",
+    "pendingYield": "52.5",
+    "pendingYieldFormatted": "52.500000"
+  }
+}
+```
+
+### GET /api/providers/rwa/yield/stats/:asset
+
+Get yield statistics for an asset.
+
+**Path Parameters**:
+- `asset` (string): Asset symbol
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "YIELD_STATS_FETCHED",
+  "message": "Yield statistics for USDY",
+  "data": {
+    "asset": "USDY",
+    "totalDistributed": "15000.0",
+    "holdersTracked": 125,
+    "averageYield": "120.0",
+    "currentRate": 5.25,
+    "rateDisplay": "5.25% APY"
+  }
+}
+```
+
+### GET /api/providers/rwa/yield/history/:asset/:address
+
+Get yield distribution history for a holder.
+
+**Path Parameters**:
+- `asset` (string): Asset symbol
+- `address` (string): Holder address
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "YIELD_HISTORY_FETCHED",
+  "message": "Yield distribution history for 0x...",
+  "data": {
+    "asset": "USDY",
+    "holder": "0x...",
+    "distributions": [
+      {
+        "timestamp": "2026-01-01T00:00:00Z",
+        "amount": "10.5",
+        "txHash": "0x..."
+      }
+    ],
+    "totalReceived": "52.5"
+  }
+}
+```
+
+### POST /api/providers/rwa/yield/simulate
+
+Simulate yield accrual for testing/demo purposes.
+
+**Request Body**:
+```json
+{
+  "asset": "USDY",
+  "address": "0x...",
+  "days": 30
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `asset` | string | Yes | Asset symbol |
+| `address` | string | Yes | Holder address |
+| `days` | number | Yes | Number of days to simulate |
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "YIELD_SIMULATED",
+  "message": "Simulated 30 days of yield accrual for 0x...",
+  "data": {
+    "asset": "USDY",
+    "holder": "0x...",
+    "daysSimulated": 30,
+    "accruedYield": "43.15",
+    "accruedYieldFormatted": "43.150000"
+  }
+}
+```
+
+### POST /api/providers/rwa/yield/distribute
+
+Distribute yield to recipients.
+
+**Request Body**:
+```json
+{
+  "asset": "USDY",
+  "recipients": ["0x...", "0x..."],
+  "amounts": ["10.5", "20.3"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `asset` | string | Yes | Asset symbol |
+| `recipients` | string[] | Yes | Array of recipient addresses |
+| `amounts` | string[] | Yes | Array of amounts (same length as recipients) |
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "YIELD_DISTRIBUTED",
+  "message": "Yield distributed to 2 recipients",
+  "data": {
+    "asset": "USDY",
+    "distributions": [
+      {"recipient": "0x...", "amount": "10.5", "txHash": "0x..."},
+      {"recipient": "0x...", "amount": "20.3", "txHash": "0x..."}
+    ],
+    "totalDistributed": "30.8"
+  }
+}
+```
+
+---
+
+## Swap Endpoints (Merchant Moe)
+
+DEX integration for token swaps on Mantle.
+
+### GET /api/providers/swap/tokens
+
+List all supported tokens for swaps.
+
+**Request**: None
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "TOKENS_LIST",
+  "message": "Supported tokens for swaps on Merchant Moe",
+  "data": {
+    "tokens": ["WMNT", "USDT", "USDC", "WETH", "mETH"],
+    "dex": "Merchant Moe",
+    "router": "0xeaEE7EE68874218c3558b40063c42B82D3E7232a",
+    "network": "Mantle Sepolia"
+  }
+}
+```
+
+### GET /api/providers/swap/quote
+
+Get swap quote for a token pair.
+
+**Query Parameters**:
+- `tokenIn` (string): Input token symbol
+- `tokenOut` (string): Output token symbol
+- `amountIn` (string): Input amount in wei
+
+**Example**: `GET /api/providers/swap/quote?tokenIn=MNT&tokenOut=USDC&amountIn=1000000000000000`
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "QUOTE_FETCHED",
+  "message": "Swap quote for MNT -> USDC",
+  "data": {
+    "tokenIn": "MNT",
+    "tokenOut": "USDC",
+    "amountIn": "1000000000000000",
+    "amountOut": "997000000000000",
+    "priceImpact": 0.003,
+    "route": ["MNT", "USDC"]
+  }
+}
+```
+
+**Note**: `amountIn` must be in wei (use BigInt). For 0.001 MNT, use `1000000000000000`.
+
+### POST /api/providers/swap/execute
+
+Execute a token swap.
+
+**Request Body**:
+```json
+{
+  "tokenIn": "MNT",
+  "tokenOut": "USDC",
+  "amountIn": "1000000000000000",
+  "minAmountOut": "990000000000000",
+  "recipient": "0x..."
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `tokenIn` | string | Yes | Input token symbol |
+| `tokenOut` | string | Yes | Output token symbol |
+| `amountIn` | string | Yes | Input amount in wei |
+| `minAmountOut` | string | Yes | Minimum output amount (slippage protection) |
+| `recipient` | string | Yes | Address to receive output tokens |
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "SWAP_EXECUTED",
+  "message": "Swap executed successfully via Merchant Moe",
+  "data": {
+    "txHash": "0x...",
+    "amountIn": "1000000000000000",
+    "amountOut": "997000000000000",
+    "effectivePrice": 0.997
+  }
+}
+```
+
+---
+
+## Lending Endpoints (Lendle)
+
+Lending protocol integration for supply, borrow, and manage positions.
+
+### GET /api/providers/lending/stats
+
+Get lending protocol statistics.
+
+**Request**: None
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "LENDING_STATS_FETCHED",
+  "message": "Lending protocol statistics",
+  "data": {
+    "totalSupplied": "15002000.0",
+    "totalBorrowed": "7000800.0",
+    "markets": 3,
+    "averageUtilization": 43.33
+  }
+}
+```
+
+### POST /api/providers/lending/supply
+
+Supply assets to lending pool.
+
+**Request Body**:
+```json
+{
+  "asset": "WMNT",
+  "amount": "1000000000000000",
+  "address": "0x..."
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `asset` | string | Yes | Asset symbol (WMNT, USDT, USDC, etc.) |
+| `amount` | string | Yes | Amount in wei |
+| `address` | string | Yes | Supplier address |
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "LENDING_SUPPLY_SUCCESS",
+  "message": "Supplied 1000000000000000 WMNT to Lendle",
+  "data": {
+    "asset": "WMNT",
+    "amount": "1000000000000000",
+    "txHash": "0x..."
+  }
+}
+```
+
+**Tested with**: 0.001 WMNT (1000000000000000 wei) ✅
+
+### POST /api/providers/lending/borrow
+
+Borrow assets from lending pool.
+
+**Request Body**:
+```json
+{
+  "asset": "WMNT",
+  "amount": "500000000000000",
+  "address": "0x..."
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "LENDING_BORROW_SUCCESS",
+  "message": "Borrowed 500000000000000 WMNT from Lendle",
+  "data": {
+    "asset": "WMNT",
+    "amount": "500000000000000",
+    "txHash": "0x..."
+  }
+}
+```
+
+**Tested with**: 0.0005 WMNT (500000000000000 wei) ✅
+
+### POST /api/providers/lending/withdraw
+
+Withdraw supplied assets from lending pool.
+
+**Request Body**:
+```json
+{
+  "asset": "WMNT",
+  "amount": "500000000000000",
+  "address": "0x..."
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "LENDING_WITHDRAW_SUCCESS",
+  "message": "Withdrew 500000000000000 WMNT from Lendle",
+  "data": {
+    "asset": "WMNT",
+    "amount": "500000000000000",
+    "txHash": "0x..."
+  }
+}
+```
+
+### POST /api/providers/lending/repay
+
+Repay borrowed assets.
+
+**Request Body**:
+```json
+{
+  "asset": "WMNT",
+  "amount": "500000000000000",
+  "address": "0x..."
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "LENDING_REPAY_SUCCESS",
+  "message": "Repaid 500000000000000 WMNT to Lendle",
+  "data": {
+    "asset": "WMNT",
+    "amount": "500000000000000",
+    "txHash": "0x..."
+  }
+}
+```
+
+---
+
+## KYC Endpoints
+
+On-chain KYC attestations for RWA compliance.
+
+### GET /api/providers/kyc/stats
+
+Get KYC statistics.
+
+**Request**: None
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "KYC_STATS_FETCHED",
+  "message": "KYC statistics",
+  "data": {
+    "totalVerified": 3,
+    "byLevel": {
+      "none": 0,
+      "basic": 1,
+      "enhanced": 1,
+      "institutional": 1
+    },
+    "byJurisdiction": {
+      "US": 1,
+      "EU": 1,
+      "SG": 1
+    }
+  }
+}
+```
+
+### GET /api/providers/kyc/status/:address
+
+Get KYC status for an address.
+
+**Path Parameters**:
+- `address` (string): Ethereum address
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "KYC_STATUS_FETCHED",
+  "message": "KYC status for 0x...",
+  "data": {
+    "address": "0x...",
+    "verified": true,
+    "level": "basic",
+    "provider": "SnowRail Mock KYC"
+  }
+}
+```
+
+### POST /api/providers/kyc/register
+
+Register KYC for an address.
+
+**Request Body**:
+```json
+{
+  "address": "0x...",
+  "level": "basic",
+  "jurisdiction": "US"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `address` | string | Yes | Ethereum address |
+| `level` | string | Yes | KYC level: "basic", "enhanced", or "institutional" |
+| `jurisdiction` | string | Yes | Jurisdiction code: "US", "EU", "SG", etc. |
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "KYC_REGISTERED",
+  "message": "KYC registered for 0x...",
+  "data": {
+    "address": "0x...",
+    "verified": true,
+    "level": "basic",
+    "provider": "SnowRail Mock KYC",
+    "expiresAt": 1799352464,
+    "jurisdiction": "US"
+  }
+}
+```
+
+### POST /api/providers/kyc/verify
+
+Verify that an address meets minimum KYC requirement.
+
+**Request Body**:
+```json
+{
+  "address": "0x...",
+  "minLevel": "basic"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `address` | string | Yes | Ethereum address |
+| `minLevel` | string | Yes | Minimum required level |
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "KYC_VERIFIED",
+  "message": "KYC verification for 0x...",
+  "data": {
+    "address": "0x...",
+    "requiredLevel": "basic",
+    "meetsRequirement": true
+  }
+}
+```
+
+### GET /api/providers/kyc/attestation/:address
+
+Get on-chain KYC attestation.
+
+**Path Parameters**:
+- `address` (string): Ethereum address
+
+**Response** (200 OK):
+```json
+{
+  "status": "success",
+  "code": "KYC_ATTESTATION_FETCHED",
+  "message": "KYC attestation for 0x...",
+  "data": {
+    "signature": "0xabab...",
+    "expiry": 1767820075,
+    "level": "basic"
+  }
+}
+```
+
+---
+
 ## MCP Protocol Endpoints
 
 Model Context Protocol (MCP) enables AI assistants to interact with the treasury.
@@ -1095,14 +1799,19 @@ curl -X POST http://localhost:4000/mcp \
 
 ---
 
-## Contract Addresses (Testnet)
+## Contract Addresses (Mantle Sepolia)
 
 | Contract | Address |
 |----------|---------|
 | Settlement | `0xae6E14caD8D4f43947401fce0E4717b8D17b4382` |
-| ZKMixer | `0xfAef6b16831d961CBd52559742eC269835FF95FF` |
+| ZKMixer | `0x9C7dC7C8D6156441D5D5eCF43B33F960331c4600` |
+| Pyth Oracle | `0xA2aa501b19aff244D90cc15a4Cf739D2725B5729` |
+| USDY (Ondo) | `0x5bE26527e817998A7206475496fDE1E68957c5A6` |
+| mETH (Mantle) | `0xcDA86A272531e8640cD7F1a92c01839911B90bb0` |
+| WMNT | `0x78c1b0C915c4FAA5FffA6CAbf0219DA63d7f4cb8` |
+| Merchant Moe Router | `0xeaEE7EE68874218c3558b40063c42B82D3E7232a` |
 
-**Explorer**: https://explorer.cronos.org/testnet
+**Explorer**: https://sepolia.mantlescan.xyz
 
 ---
 

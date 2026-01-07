@@ -25,8 +25,11 @@ SnowRail is a production-ready **AI-Powered Treasury** that combines Real World 
 ## 📚 Documentation
 
 - [**Hackathon Implementation**](./MANTLE_HACKATHON_IMPLEMENTATION.md) - Complete track-by-track breakdown
+- [**LLM API Reference**](./docs/LLM_API_REFERENCE.md) - **✅ Complete 50+ endpoint documentation**
+- [**API Testing Results**](./docs/API_TESTING_RESULTS.md) - **✅ 49 endpoints tested (92% success rate)**
 - [**Architecture Overview**](./docs/ARCHITECTURE.md) - System design & data flow
 - [**API Standards**](./docs/API_STANDARDS.md) - Response formats & error codes
+- [**LLM Project Context**](./docs/LLM_PROJECT_CONTEXT.md) - Complete project context for AI
 - [**E2E Architecture**](./E2E_ARCHITECTURE.md) - End-to-end flow documentation
 - [**Demo Guide**](./DEMO.md) - Step-by-step demo instructions
 
@@ -95,6 +98,35 @@ SnowRail is a production-ready **AI-Powered Treasury** that combines Real World 
 - **Pyth Network** (Oracle)
 - **Ondo Finance** (RWA - USDY)
 - **Noir** (ZK circuits)
+
+---
+
+## ✅ API Testing & Validation
+
+**Comprehensive testing completed on January 7, 2026**
+
+### Test Results
+- **Total Endpoints:** 49
+- **Success Rate:** 92% (45/49 fully functional)
+- **Categories Tested:** Health, Intents, Agent, Mixer, Oracle, RWA, Swap, Lending, KYC
+
+### Key Achievements
+✅ **Intent Flow Complete** - Created, funded, and executed with 0.001 MNT
+✅ **ZK Mixer Deposit** - Successfully deposited 0.1 CRO with privacy commitment
+✅ **Oracle Integration** - Real-time prices from Pyth (ETH: $3,147, MNT: $1.03)
+✅ **RWA Tracking** - USDY yield at 5.25% APY
+✅ **DeFi Operations** - Swap, Supply, Borrow, Withdraw, Repay all tested
+✅ **KYC System** - Multi-level attestations working
+
+### On-Chain Confirmations
+```
+Settlement Contract: 0xae6E...4382 (Funded: 0.0019 MNT)
+ZK Mixer: 0x9C7D...4600 (1 deposit confirmed)
+Intent Execution TX: 0xd0bb...ee9c ✅
+Mixer Deposit TX: 0x05b4...8ee9 ✅
+```
+
+📊 **[Full Testing Report](./docs/API_TESTING_RESULTS.md)** - Detailed results with transaction hashes
 
 ---
 
@@ -389,6 +421,18 @@ curl -X POST http://localhost:3001/api/mixer/withdraw \
 
 ---
 
+## 👥 Team
+
+**Kevin Brenes** - Full-Stack Blockchain Engineer
+- **Role**: Lead Developer & Architect
+- **Expertise**: Solidity, TypeScript, Next.js, Zero-Knowledge Proofs
+- **GitHub**: [@kevinbrenes](https://github.com/kevinbrenes)
+- **Contact**: [Your Email]
+
+*Built with passion for the Mantle Network Hackathon 2025*
+
+---
+
 ## 🤝 Contributing
 
 This is a hackathon project for Mantle Network. For production use:
@@ -397,6 +441,25 @@ This is a hackathon project for Mantle Network. For production use:
 2. KYC provider integration
 3. Production database setup
 4. Load testing and optimization
+
+---
+
+## ⚖️ Compliance Statement
+
+SnowRail integrates regulated Real-World Assets through licensed providers:
+
+- **USDY (US Dollar Yield)**: Issued by Ondo Finance, backed by US Treasury Bills
+- **mETH (Mantle Staked ETH)**: Mantle's liquid staking derivative
+
+**KYC/AML Compliance**: All RWA access is gated by on-chain KYC attestations with multi-level verification (Basic, Enhanced, Institutional).
+
+**Jurisdiction Support**: US, EU, Singapore with respective regulatory compliance frameworks.
+
+**Disclaimer**: This project is a technical demonstration for the Mantle Hackathon. It is not a licensed financial product or investment advice. Production deployment would require:
+- Full smart contract security audits
+- Regulatory compliance review
+- Licensed custody solutions
+- KYC provider integration (e.g., Civic, Quadrata)
 
 ---
 
@@ -412,6 +475,8 @@ MIT License - See [LICENSE](./LICENSE) for details
 - **Hackathon**: Mantle $150K Prize Pool
 - **Documentation**: [/docs](/docs)
 - **MantleScan**: https://sepolia.mantlescan.xyz
+- **Live Demo**: [Coming Soon]
+- **Demo Video**: [Coming Soon]
 
 ---
 

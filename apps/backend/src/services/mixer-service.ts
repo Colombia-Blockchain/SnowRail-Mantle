@@ -134,8 +134,12 @@ export class MixerService {
    * Generate Merkle proof for a commitment
    */
   generateMerkleProof(leafIndex: number): MerkleProof {
+    if (this.leaves.length === 0) {
+      throw new Error('No deposits in tree. Cannot generate proof.');
+    }
+
     if (leafIndex >= this.leaves.length) {
-      throw new Error('Leaf index out of bounds');
+      throw new Error(`Leaf index ${leafIndex} out of bounds (tree has ${this.leaves.length} leaves)`);
     }
 
     const pathElements: string[] = [];
@@ -148,13 +152,29 @@ export class MixerService {
 
       // Get sibling (or zero if doesn't exist)
       const sibling = this._getNode(level, siblingIndex);
-      pathElements.push(sibling);
+
+      // Ensure sibling is a valid bytes32 value
+      if (!sibling || sibling === '0x' || sibling.length !== 66) {
+        pathElements.push(this.zeros[level]);
+      } else {
+        pathElements.push(sibling);
+      }
+
       pathIndices.push(currentIndex % 2); // 0 = left, 1 = right
 
       currentIndex = Math.floor(currentIndex / 2);
     }
 
     const root = this._computeRoot();
+
+    // Validate proof before returning
+    if (pathElements.length !== this.TREE_DEPTH) {
+      throw new Error(`Invalid proof: expected ${this.TREE_DEPTH} path elements, got ${pathElements.length}`);
+    }
+
+    if (pathIndices.length !== this.TREE_DEPTH) {
+      throw new Error(`Invalid proof: expected ${this.TREE_DEPTH} path indices, got ${pathIndices.length}`);
+    }
 
     return {
       root,

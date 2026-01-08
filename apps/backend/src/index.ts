@@ -40,6 +40,12 @@ const server = Fastify({
   },
 });
 
+// Add BigInt serialization support for JSON responses
+// This fixes the "Do not know how to serialize a BigInt" error
+(BigInt.prototype as any).toJSON = function() {
+  return this.toString();
+};
+
 // Security middleware
 server.register(helmet, {
   contentSecurityPolicy: process.env.NODE_ENV === 'production',

@@ -69,12 +69,28 @@ const MOCK_MARKETS: Record<string, LendingMarket> = {
     borrowAPY: 6.5,
     utilizationRate: 40,
   },
-  mETH: {
+  METH: {
     asset: 'mETH',
     totalSupply: BigInt('2000000000000000000000'), // 2K
     totalBorrow: BigInt('800000000000000000000'), // 800
     supplyAPY: 2.1,
     borrowAPY: 4.0,
+    utilizationRate: 40,
+  },
+  USDC: {
+    asset: 'USDC',
+    totalSupply: BigInt('8000000000000000000000000'), // 8M
+    totalBorrow: BigInt('3500000000000000000000000'), // 3.5M
+    supplyAPY: 3.2,
+    borrowAPY: 4.8,
+    utilizationRate: 43.75,
+  },
+  USDT: {
+    asset: 'USDT',
+    totalSupply: BigInt('7500000000000000000000000'), // 7.5M
+    totalBorrow: BigInt('3000000000000000000000000'), // 3M
+    supplyAPY: 3.0,
+    borrowAPY: 4.5,
     utilizationRate: 40,
   },
 };
@@ -108,23 +124,8 @@ export class LendingProvider implements ILendingProvider {
   async getMarket(asset: string): Promise<LendingMarket> {
     const assetUpper = asset.toUpperCase();
 
-    // In production, fetch from contract
-    if (this.lendingPool) {
-      try {
-        const tokenAddress = MANTLE_TOKENS[assetUpper];
-        if (!tokenAddress) {
-          throw new Error(`Unknown asset: ${asset}`);
-        }
-
-        const reserveData = await this.lendingPool.getReserveData(tokenAddress);
-        // Parse reserve data and calculate APY
-        // For hackathon demo, return mock data
-      } catch (error) {
-        console.log(`[LendingProvider] Falling back to mock data for ${asset}`);
-      }
-    }
-
     // Return mock data for demo
+    // In production, would fetch from contract via this.lendingPool.getReserveData()
     const mockMarket = MOCK_MARKETS[assetUpper];
     if (!mockMarket) {
       throw new Error(`Unsupported lending market: ${asset}`);

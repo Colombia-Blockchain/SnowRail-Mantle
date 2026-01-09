@@ -1,5 +1,5 @@
 /**
- * MCP Tool Handlers for Cronos x402 Agentic Treasury
+ * MCP Tool Handlers for SnowRail Agentic Treasury - Mantle Network
  *
  * These handlers map MCP tool calls to existing services.
  * They act as a bridge between MCP protocol and the backend business logic.
@@ -269,7 +269,7 @@ export const handleTriggerAgent: MCPToolHandler = async (args, logger) => {
         decision: agentDecision.decision,
         reason: agentDecision.reason,
       },
-      cronoscanUrl: txHash ? `https://explorer.cronos.org/testnet/tx/${txHash}` : undefined,
+      mantlescanUrl: txHash ? `https://sepolia.mantlescan.xyz/tx/${txHash}` : undefined,
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -290,19 +290,19 @@ export const handleGetTreasuryStatus: MCPToolHandler = async (_args, logger) => 
     const walletAddress = walletService.getAddress();
 
     const settlementContractAddress = process.env.SETTLEMENT_CONTRACT_ADDRESS;
-    const chainId = process.env.CHAIN_ID || '338';
-    const rpcUrl = process.env.RPC_URL || 'https://evm-t3.cronos.org';
+    const chainId = process.env.CHAIN_ID || '5003';
+    const rpcUrl = process.env.RPC_URL || 'https://rpc.sepolia.mantle.xyz';
 
     return successResult({
       message: 'Treasury status retrieved',
       treasury: {
         settlementContract: settlementContractAddress,
         backendWallet: walletAddress,
-        balance: `${balance} CRO`,
+        balance: `${balance} MNT`,
         network: {
           chainId: parseInt(chainId),
           rpcUrl,
-          explorer: 'https://explorer.cronos.org/testnet',
+          explorer: 'https://sepolia.mantlescan.xyz',
         },
       },
     });

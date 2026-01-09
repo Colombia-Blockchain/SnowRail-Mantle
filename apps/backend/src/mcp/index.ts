@@ -1,5 +1,5 @@
 /**
- * MCP Server Plugin for Cronos x402 Agentic Treasury
+ * MCP Server Plugin for SnowRail Agentic Treasury - Mantle Network
  *
  * Implements Model Context Protocol (MCP) server using JSON-RPC 2.0
  * Exposes treasury functionality as tools for AI assistants
@@ -33,9 +33,9 @@ const MCP_PROTOCOL_VERSION = '2024-11-05';
 
 // Server info
 const SERVER_INFO = {
-  name: 'cronos-x402-treasury',
+  name: 'snowrail-mantle-treasury',
   version: '1.0.0',
-  description: 'MCP Server for Cronos x402 Agentic Treasury - AI-driven payment settlements on Cronos blockchain',
+  description: 'MCP Server for SnowRail Agentic Treasury - AI-driven payment settlements on Mantle blockchain',
 };
 
 /**

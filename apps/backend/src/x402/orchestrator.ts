@@ -39,7 +39,7 @@ export class Orchestrator {
   /**
    * Execute a payment intent based on agent decision
    * X402 protocol: Only executes if Agent decision is EXECUTE
-   * Broadcasts signed transaction to Cronos Settlement contract
+   * Broadcasts signed transaction to Mantle Settlement contract
    */
   async execute(intent: PaymentIntent, decision: AgentDecision | AgentDecisionWithZK): Promise<string | null> {
     this.logger.info(
@@ -133,13 +133,13 @@ export class Orchestrator {
         '[Orchestrator] Intent signed successfully'
       );
 
-      // Connect to Cronos network and Settlement contract
-      const rpcUrl = process.env.RPC_URL || 'https://evm-t3.cronos.org';
+      // Connect to Mantle network and Settlement contract
+      const rpcUrl = process.env.RPC_URL || 'https://rpc.sepolia.mantle.xyz';
       const provider = new ethers.JsonRpcProvider(rpcUrl);
 
       // Validate RPC connection and chain ID
       const network = await provider.getNetwork();
-      const expectedChainId = BigInt(process.env.CHAIN_ID || '338');
+      const expectedChainId = BigInt(process.env.CHAIN_ID || '5003');
       if (network.chainId !== expectedChainId) {
         throw new Error(
           `Wrong chain: expected ${expectedChainId}, got ${network.chainId}`
@@ -186,7 +186,7 @@ export class Orchestrator {
             signatureLength: signature.length,
           },
         },
-        '[Orchestrator] Submitting settlement transaction to Cronos'
+        '[Orchestrator] Submitting settlement transaction to Mantle'
       );
 
       const tx = await settlementContract.executeSettlement(
@@ -219,7 +219,7 @@ export class Orchestrator {
           gasUsed: receipt.gasUsed?.toString(),
           status: receipt.status,
         },
-        '[Orchestrator] Transaction confirmed on Cronos blockchain'
+        '[Orchestrator] Transaction confirmed on Mantle blockchain'
       );
 
       if (receipt.status === 0) {

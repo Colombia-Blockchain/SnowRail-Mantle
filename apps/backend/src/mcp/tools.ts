@@ -1,5 +1,5 @@
 /**
- * MCP Tool Definitions for Cronos x402 Agentic Treasury
+ * MCP Tool Definitions for SnowRail Agentic Treasury - Mantle Network
  *
  * These tools expose the treasury functionality to AI assistants via MCP protocol.
  * Each tool has a JSON Schema for input validation and clear descriptions for AI consumption.
@@ -22,9 +22,9 @@ export interface MCPTool {
 export const createPaymentIntentTool: MCPTool = {
   name: 'create_payment_intent',
   description:
-    'Create a new payment intent for the X402 Agentic Treasury on Cronos blockchain. ' +
+    'Create a new payment intent for the SnowRail Agentic Treasury on Mantle blockchain. ' +
     'The intent defines a conditional payment that will be evaluated by the AI agent. ' +
-    'Supports manual triggers (always execute) or price-based conditions (execute when CRO price is below threshold).',
+    'Supports manual triggers (always execute) or price-based conditions (execute when MNT price is below threshold).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -34,8 +34,8 @@ export const createPaymentIntentTool: MCPTool = {
       },
       currency: {
         type: 'string',
-        description: 'Currency/token symbol. Supported: CRO, USDC, USDT',
-        enum: ['CRO', 'USDC', 'USDT'],
+        description: 'Currency/token symbol. Supported: MNT, USDC, USDT, USDY, mETH',
+        enum: ['MNT', 'USDC', 'USDT', 'USDY', 'METH'],
       },
       recipient: {
         type: 'string',
@@ -46,7 +46,7 @@ export const createPaymentIntentTool: MCPTool = {
         type: 'string',
         description:
           'Type of execution condition. "manual" always executes when triggered. ' +
-          '"price-below" executes only when CRO/USD price is below the specified threshold.',
+          '"price-below" executes only when MNT/USD price is below the specified threshold.',
         enum: ['manual', 'price-below'],
       },
       conditionValue: {
@@ -105,9 +105,9 @@ export const getPaymentIntentTool: MCPTool = {
 export const triggerAgentTool: MCPTool = {
   name: 'trigger_agent',
   description:
-    'Trigger the X402 AI Agent to evaluate a payment intent and execute it if conditions are met. ' +
+    'Trigger the SnowRail AI Agent to evaluate a payment intent and execute it if conditions are met. ' +
     'The agent will check the condition (manual or price-based) and if approved, ' +
-    'execute the settlement transaction on the Cronos blockchain. ' +
+    'execute the settlement transaction on the Mantle blockchain. ' +
     'Returns the agent decision (EXECUTE or SKIP) with reason, and transaction hash if executed.',
   inputSchema: {
     type: 'object',
@@ -129,8 +129,8 @@ export const triggerAgentTool: MCPTool = {
 export const getTreasuryStatusTool: MCPTool = {
   name: 'get_treasury_status',
   description:
-    'Get the current status of the X402 Treasury on Cronos blockchain. ' +
-    'Returns the Settlement contract address, current balance in CRO, ' +
+    'Get the current status of the SnowRail Treasury on Mantle blockchain. ' +
+    'Returns the Settlement contract address, current balance in MNT, ' +
     'backend wallet address, and network information (chain ID, RPC URL).',
   inputSchema: {
     type: 'object',

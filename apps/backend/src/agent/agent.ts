@@ -25,7 +25,9 @@ export class Agent {
   private useRealPriceApi = process.env.USE_REAL_PRICE_API === 'true';
 
   // Feature flags for ZK integration
-  private requireVerification = process.env.REQUIRE_VERIFICATION === 'true';
+  // SECURITY: Verification is REQUIRED by default in production
+  // Can only be disabled explicitly in development/test environments
+  private requireVerification: boolean;
   private useZKProofs = process.env.USE_ZK_PROOFS === 'true';
 
   // Price service for Crypto.com MCP + CoinGecko fallback
@@ -36,6 +38,42 @@ export class Agent {
   private zkProvider: IZKProofProvider | null = null;
 
   constructor(private logger: FastifyInstance['log']) {
+    // SECURITY: Determine verification requirement based on environment
+    // Production: Always require verification (default: true)
+    // Development/Test: Can be disabled via REQUIRE_VERIFICATION=false
+    const isProduction = process.env.NODE_ENV === 'production';
+    const verificationEnv = process.env.REQUIRE_VERIFICATION;
+
+    if (isProduction) {
+      // In production, verification is always required
+      // REQUIRE_VERIFICATION=false is IGNORED in production for security
+      this.requireVerification = true;
+      if (verificationEnv === 'false') {
+        this.logger.warn(
+          '[Agent] SECURITY WARNING: REQUIRE_VERIFICATION=false is ignored in production. Verification is enforced.'
+        );
+      }
+    } else {
+      // In development/test, allow explicit disable
+      // Default to true unless explicitly set to 'false'
+      this.requireVerification = verificationEnv !== 'false';
+      if (!this.requireVerification) {
+        this.logger.warn(
+          { NODE_ENV: process.env.NODE_ENV },
+          '[Agent] SECURITY WARNING: Recipient verification is DISABLED. This should NEVER be used in production!'
+        );
+      }
+    }
+
+    this.logger.info(
+      {
+        requireVerification: this.requireVerification,
+        useZKProofs: this.useZKProofs,
+        environment: process.env.NODE_ENV || 'development',
+      },
+      '[Agent] Security configuration initialized'
+    );
+
     // Try to get price service if initialized
     try {
       this.priceService = getPriceService();
@@ -143,7 +181,7 @@ export class Agent {
     if (!this.zkProvider) return undefined;
 
     try {
-      const currentPrice = await this.fetchCurrentPrice('CRO', 'USD');
+      const currentPrice = await this.fetchCurrentPrice('MNT', 'USD');
       const threshold = parseFloat(intent.condition.value);
       const chainId = parseInt(process.env.CHAIN_ID || '338', 10);
 
@@ -199,7 +237,7 @@ export class Agent {
       };
     }
 
-    const currentPrice = await this.fetchCurrentPrice('CRO', 'USD');
+    const currentPrice = await this.fetchCurrentPrice('MNT', 'USD');
     const conditionMet = currentPrice < targetPrice;
 
     this.logger.info(
@@ -230,6 +268,6 @@ export class Agent {
 
     // MVP: Return mock price
     this.logger.debug({ base, quote }, '[Agent] Fetching price (MOCK)');
-    return 0.08; // Mock CRO/USD price for MVP (below typical thresholds for testing)
+    return 0.50; // Mock MNT/USD price for MVP (below typical thresholds for testing)
   }
 }

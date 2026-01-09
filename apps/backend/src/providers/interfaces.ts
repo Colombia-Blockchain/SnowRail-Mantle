@@ -538,6 +538,107 @@ export type AgentProviderType = 'openai' | 'anthropic' | 'mock';
 export type ZKProviderType = 'noir' | 'mock';
 export type MonitoringProviderType = 'prometheus' | 'mock';
 
+// ============================================
+// User Isolation Types
+// ============================================
+
+/**
+ * Represents a user's isolated pool state.
+ * Each user has their own pool - tokens NEVER mix between users.
+ */
+export interface UserPool {
+  /** User's wallet address (lowercase) */
+  userAddress: string;
+  /** Total deposited amount per asset */
+  deposits: Map<string, bigint>;
+  /** Total borrowed amount per asset */
+  borrows: Map<string, bigint>;
+  /** Timestamp of pool creation */
+  createdAt: number;
+  /** Timestamp of last activity */
+  lastActivityAt: number;
+}
+
+/**
+ * Represents a user's position in a specific asset within their isolated pool.
+ * This extends LendingPosition with user-specific tracking.
+ */
+export interface UserPosition {
+  /** User's wallet address */
+  userAddress: string;
+  /** Asset symbol */
+  asset: string;
+  /** Amount supplied by this user only */
+  supplied: bigint;
+  /** Amount borrowed by this user only */
+  borrowed: bigint;
+  /** Collateral factor for this position */
+  collateralFactor: number;
+  /** Liquidation threshold */
+  liquidationThreshold: number;
+  /** Health factor for this user's position */
+  healthFactor: number;
+  /** Timestamp when position was created */
+  createdAt: number;
+  /** Timestamp of last update */
+  updatedAt: number;
+}
+
+/**
+ * User's isolated yield tracking.
+ * Yield comes from user's own deposits only.
+ */
+export interface UserYieldRecord {
+  /** User's wallet address */
+  userAddress: string;
+  /** Asset symbol */
+  asset: string;
+  /** User's balance at last calculation */
+  balance: bigint;
+  /** Timestamp of last yield claim */
+  lastClaimTimestamp: number;
+  /** Pending yield for this user only */
+  pendingYield: bigint;
+  /** Total yield claimed by this user */
+  totalClaimed: bigint;
+}
+
+/**
+ * Interface for user pool management service.
+ * Ensures complete isolation between users.
+ */
+export interface IUserPoolService {
+  /**
+   * Get or create a user's isolated pool
+   */
+  getUserPool(userAddress: string): UserPool;
+
+  /**
+   * Deposit to user's isolated pool
+   */
+  depositToPool(userAddress: string, asset: string, amount: bigint): void;
+
+  /**
+   * Withdraw from user's isolated pool
+   */
+  withdrawFromPool(userAddress: string, asset: string, amount: bigint): void;
+
+  /**
+   * Get user's position for a specific asset
+   */
+  getUserPosition(userAddress: string, asset: string): UserPosition | null;
+
+  /**
+   * Get all positions for a user
+   */
+  getAllUserPositions(userAddress: string): UserPosition[];
+
+  /**
+   * Check if user has sufficient balance
+   */
+  hasSufficientBalance(userAddress: string, asset: string, amount: bigint): boolean;
+}
+
 export interface ExtendedProviderConfig extends ProviderConfig {
   yield: {
     type: YieldDistributorType;

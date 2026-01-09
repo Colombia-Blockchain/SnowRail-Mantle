@@ -5,6 +5,12 @@
  *
  * Handles yield calculation and distribution for RWA tokens like USDY and mETH.
  * This provider tracks yield accrual and manages distribution to token holders.
+ *
+ * CRITICAL: User Isolation Architecture
+ * - Each user has their OWN isolated yield tracking
+ * - User A's yield comes from User A's deposits ONLY
+ * - Yield calculations are per-user, never shared
+ * - Gas fees are paid from backend PRIVATE_KEY (this is correct)
  */
 
 import { ethers } from 'ethers';
@@ -12,6 +18,7 @@ import {
   IYieldDistributor,
   YieldDistribution,
   IRWAProvider,
+  UserYieldRecord,
 } from './interfaces';
 
 // Yield Distribution Events ABI
@@ -29,14 +36,8 @@ export interface YieldDistributorConfig {
   rwaProvider: IRWAProvider;
 }
 
-// In-memory tracking for demo (would be on-chain in production)
-interface YieldRecord {
-  recipient: string;
-  asset: string;
-  balance: bigint;
-  lastClaimTimestamp: number;
-  pendingYield: bigint;
-}
+// NOTE: The old shared YieldRecord interface has been replaced with UserYieldRecord
+// from interfaces.ts which includes proper user isolation tracking.
 
 export class YieldDistributor implements IYieldDistributor {
   private readonly provider: ethers.JsonRpcProvider;
@@ -44,10 +45,27 @@ export class YieldDistributor implements IYieldDistributor {
   private readonly rwaProvider: IRWAProvider;
   private readonly distributorAddress?: string;
 
-  // In-memory yield tracking (demo purposes)
-  private yieldRecords: Map<string, YieldRecord> = new Map();
-  private distributionHistory: YieldDistribution[] = [];
-  private totalDistributed: Map<string, bigint> = new Map();
+  /**
+   * INSTANCE-LEVEL user yield records - NOT shared across users!
+   *
+   * Structure: Map<"asset-userAddress", UserYieldRecord>
+   *
+   * CRITICAL: This is the key architectural fix.
+   * Each user has their own isolated yield tracking.
+   * User A's yield comes from User A's deposits ONLY.
+   */
+  private readonly userYieldRecords: Map<string, UserYieldRecord> = new Map();
+
+  /**
+   * Per-user distribution history - isolated per user
+   * Structure: Map<userAddress, YieldDistribution[]>
+   */
+  private readonly userDistributionHistory: Map<string, YieldDistribution[]> = new Map();
+
+  /**
+   * Total yield distributed per asset (protocol-level stat)
+   */
+  private readonly totalDistributed: Map<string, bigint> = new Map();
 
   // Yield calculation constants
   private readonly SECONDS_PER_YEAR = 31536000;
@@ -59,41 +77,49 @@ export class YieldDistributor implements IYieldDistributor {
     this.distributorAddress = config.distributorAddress;
 
     if (config.privateKey) {
+      // Gas is paid from backend PRIVATE_KEY - this is correct
       this.signer = new ethers.Wallet(config.privateKey, this.provider);
     }
   }
 
   /**
    * Calculate pending yield for an address based on their RWA holdings
+   *
+   * CRITICAL: Calculates yield based on THIS user's deposits ONLY.
+   * User A's yield is independent of User B's deposits.
    */
   async calculatePendingYield(asset: string, holder: string): Promise<bigint> {
-    const recordKey = `${asset.toLowerCase()}-${holder.toLowerCase()}`;
-    let record = this.yieldRecords.get(recordKey);
+    const holderLower = holder.toLowerCase();
+    const assetUpper = asset.toUpperCase();
+    const recordKey = `${asset.toLowerCase()}-${holderLower}`;
+    let record = this.userYieldRecords.get(recordKey);
 
-    // Get current balance
+    // Get current balance for THIS user only
     const currentBalance = await this.rwaProvider.getBalance(asset, holder);
 
     // Get yield rate (in basis points)
     const yieldRate = await this.rwaProvider.getYieldRate(asset);
 
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+
     if (!record) {
-      // First time tracking this holder
+      // First time tracking this holder - create isolated record
       record = {
-        recipient: holder,
-        asset: asset.toUpperCase(),
+        userAddress: holderLower,
+        asset: assetUpper,
         balance: currentBalance,
-        lastClaimTimestamp: Math.floor(Date.now() / 1000),
+        lastClaimTimestamp: currentTimestamp,
         pendingYield: BigInt(0),
+        totalClaimed: BigInt(0),
       };
-      this.yieldRecords.set(recordKey, record);
+      this.userYieldRecords.set(recordKey, record);
       return BigInt(0);
     }
 
     // Calculate time elapsed since last claim
-    const currentTimestamp = Math.floor(Date.now() / 1000);
     const timeElapsed = currentTimestamp - record.lastClaimTimestamp;
 
-    // Calculate yield accrued:
+    // Calculate yield accrued FROM THIS USER'S DEPOSITS ONLY:
     // yield = balance * (yieldRate / BASIS_POINTS) * (timeElapsed / SECONDS_PER_YEAR)
     // To maintain precision with BigInt, we rearrange:
     // yield = balance * yieldRate * timeElapsed / (BASIS_POINTS * SECONDS_PER_YEAR)
@@ -103,17 +129,28 @@ export class YieldDistributor implements IYieldDistributor {
       (averageBalance * BigInt(yieldRate) * BigInt(timeElapsed)) /
       BigInt(this.BASIS_POINTS * this.SECONDS_PER_YEAR);
 
-    // Update record
+    // Update user's isolated record
     record.balance = currentBalance;
     record.pendingYield = record.pendingYield + yieldAccrued;
     record.lastClaimTimestamp = currentTimestamp;
-    this.yieldRecords.set(recordKey, record);
+    this.userYieldRecords.set(recordKey, record);
 
     return record.pendingYield;
   }
 
   /**
+   * Get user's yield record (for internal use)
+   */
+  getUserYieldRecord(asset: string, holder: string): UserYieldRecord | null {
+    const recordKey = `${asset.toLowerCase()}-${holder.toLowerCase()}`;
+    return this.userYieldRecords.get(recordKey) || null;
+  }
+
+  /**
    * Distribute yield to multiple holders
+   *
+   * CRITICAL: Each recipient receives yield from THEIR deposits ONLY.
+   * Distribution is per-user isolated.
    */
   async distributeYield(
     asset: string,
@@ -121,20 +158,24 @@ export class YieldDistributor implements IYieldDistributor {
   ): Promise<YieldDistribution[]> {
     const distributions: YieldDistribution[] = [];
     const currentTimestamp = Math.floor(Date.now() / 1000);
+    const assetUpper = asset.toUpperCase();
 
     for (const recipient of recipients) {
+      const recipientLower = recipient.toLowerCase();
+      const recordKey = `${asset.toLowerCase()}-${recipientLower}`;
+
+      // Calculate pending yield for THIS user only
       const pendingYield = await this.calculatePendingYield(asset, recipient);
 
       if (pendingYield > BigInt(0)) {
+        const record = this.userYieldRecords.get(recordKey);
+
         const distribution: YieldDistribution = {
-          recipient,
+          recipient: recipientLower,
           amount: pendingYield,
-          asset: asset.toUpperCase(),
+          asset: assetUpper,
           period: {
-            start:
-              this.yieldRecords.get(
-                `${asset.toLowerCase()}-${recipient.toLowerCase()}`
-              )?.lastClaimTimestamp || currentTimestamp - 86400,
+            start: record?.lastClaimTimestamp || currentTimestamp - 86400,
             end: currentTimestamp,
           },
         };
@@ -158,26 +199,29 @@ export class YieldDistributor implements IYieldDistributor {
         } else {
           // Mock transaction hash for demo
           distribution.txHash = `0x${Buffer.from(
-            `${recipient}-${asset}-${currentTimestamp}`
+            `${recipientLower}-${asset}-${currentTimestamp}`
           )
             .toString('hex')
             .slice(0, 64)}`;
         }
 
         distributions.push(distribution);
-        this.distributionHistory.push(distribution);
 
-        // Update total distributed
-        const assetKey = asset.toUpperCase();
-        const currentTotal = this.totalDistributed.get(assetKey) || BigInt(0);
-        this.totalDistributed.set(assetKey, currentTotal + pendingYield);
+        // Add to user's isolated distribution history
+        if (!this.userDistributionHistory.has(recipientLower)) {
+          this.userDistributionHistory.set(recipientLower, []);
+        }
+        this.userDistributionHistory.get(recipientLower)!.push(distribution);
 
-        // Reset pending yield for this recipient
-        const recordKey = `${asset.toLowerCase()}-${recipient.toLowerCase()}`;
-        const record = this.yieldRecords.get(recordKey);
+        // Update total distributed (protocol-level stat)
+        const currentTotal = this.totalDistributed.get(assetUpper) || BigInt(0);
+        this.totalDistributed.set(assetUpper, currentTotal + pendingYield);
+
+        // Update user's record - reset pending, increment totalClaimed
         if (record) {
+          record.totalClaimed += pendingYield;
           record.pendingYield = BigInt(0);
-          this.yieldRecords.set(recordKey, record);
+          this.userYieldRecords.set(recordKey, record);
         }
       }
     }
@@ -187,16 +231,19 @@ export class YieldDistributor implements IYieldDistributor {
 
   /**
    * Get historical yield distributions for a holder
+   *
+   * CRITICAL: Returns ONLY this user's distribution history.
+   * User A cannot see User B's distributions.
    */
   async getDistributionHistory(
     asset: string,
     holder: string
   ): Promise<YieldDistribution[]> {
-    return this.distributionHistory.filter(
-      (d) =>
-        d.asset.toUpperCase() === asset.toUpperCase() &&
-        d.recipient.toLowerCase() === holder.toLowerCase()
-    );
+    const holderLower = holder.toLowerCase();
+    const assetUpper = asset.toUpperCase();
+
+    const userHistory = this.userDistributionHistory.get(holderLower) || [];
+    return userHistory.filter((d) => d.asset === assetUpper);
   }
 
   /**
@@ -230,7 +277,7 @@ export class YieldDistributor implements IYieldDistributor {
   }
 
   /**
-   * Get yield statistics for an asset
+   * Get yield statistics for an asset (protocol-level)
    */
   async getYieldStats(asset: string): Promise<{
     totalDistributed: string;
@@ -239,14 +286,15 @@ export class YieldDistributor implements IYieldDistributor {
     currentRate: number;
   }> {
     const assetUpper = asset.toUpperCase();
+    const assetLower = asset.toLowerCase();
     const totalDistributed = this.totalDistributed.get(assetUpper) || BigInt(0);
 
-    // Count holders for this asset
+    // Count unique holders for this asset
     let holdersTracked = 0;
     let totalPending = BigInt(0);
 
-    for (const [key, record] of this.yieldRecords.entries()) {
-      if (key.startsWith(asset.toLowerCase())) {
+    for (const [key, record] of this.userYieldRecords.entries()) {
+      if (key.startsWith(assetLower)) {
         holdersTracked++;
         totalPending += record.pendingYield;
       }
@@ -266,7 +314,37 @@ export class YieldDistributor implements IYieldDistributor {
   }
 
   /**
+   * Get yield statistics for a specific user
+   */
+  async getUserYieldStats(asset: string, holder: string): Promise<{
+    pendingYield: string;
+    totalClaimed: string;
+    balance: string;
+    lastClaimTimestamp: number;
+  }> {
+    const recordKey = `${asset.toLowerCase()}-${holder.toLowerCase()}`;
+    const record = this.userYieldRecords.get(recordKey);
+
+    if (!record) {
+      return {
+        pendingYield: '0',
+        totalClaimed: '0',
+        balance: '0',
+        lastClaimTimestamp: 0,
+      };
+    }
+
+    return {
+      pendingYield: ethers.formatEther(record.pendingYield),
+      totalClaimed: ethers.formatEther(record.totalClaimed),
+      balance: ethers.formatEther(record.balance),
+      lastClaimTimestamp: record.lastClaimTimestamp,
+    };
+  }
+
+  /**
    * Simulate yield accrual for testing (advances time)
+   * NOTE: Only affects THIS user's isolated yield record
    */
   async simulateYieldAccrual(
     asset: string,
@@ -274,22 +352,51 @@ export class YieldDistributor implements IYieldDistributor {
     daysToSimulate: number
   ): Promise<bigint> {
     const recordKey = `${asset.toLowerCase()}-${holder.toLowerCase()}`;
-    let record = this.yieldRecords.get(recordKey);
+    let record = this.userYieldRecords.get(recordKey);
 
     if (!record) {
       // Initialize record first
       await this.calculatePendingYield(asset, holder);
-      record = this.yieldRecords.get(recordKey);
+      record = this.userYieldRecords.get(recordKey);
     }
 
     if (record) {
       // Backdate the last claim timestamp to simulate time passing
       record.lastClaimTimestamp -= daysToSimulate * 86400;
-      this.yieldRecords.set(recordKey, record);
+      this.userYieldRecords.set(recordKey, record);
     }
 
     // Recalculate with the new "elapsed" time
     return this.calculatePendingYield(asset, holder);
+  }
+
+  /**
+   * Get the number of users with yield records (for monitoring)
+   */
+  getUniqueHolderCount(): number {
+    const uniqueHolders = new Set<string>();
+    for (const [key] of this.userYieldRecords) {
+      const holder = key.split('-').slice(1).join('-'); // Extract holder from "asset-holder" key
+      uniqueHolders.add(holder);
+    }
+    return uniqueHolders.size;
+  }
+
+  /**
+   * Clear all yield records for a user (for testing only)
+   */
+  clearUserYieldRecords(holder: string): void {
+    const holderLower = holder.toLowerCase();
+
+    // Remove all records for this user
+    for (const [key] of this.userYieldRecords) {
+      if (key.endsWith(`-${holderLower}`)) {
+        this.userYieldRecords.delete(key);
+      }
+    }
+
+    // Remove distribution history
+    this.userDistributionHistory.delete(holderLower);
   }
 }
 

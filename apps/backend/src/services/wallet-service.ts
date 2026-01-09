@@ -11,7 +11,7 @@ export class WalletService {
       throw new Error('PRIVATE_KEY not found in environment variables');
     }
 
-    const rpcUrl = process.env.RPC_URL || process.env.CRONOS_RPC_URL || 'https://evm-t3.cronos.org';
+    const rpcUrl = process.env.RPC_URL || 'https://rpc.sepolia.mantle.xyz';
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.wallet = new ethers.Wallet(privateKey, this.provider);
 

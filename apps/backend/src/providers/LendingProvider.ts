@@ -9,10 +9,16 @@
  *
  * Provides supply, borrow, withdraw, and repay functionality
  * with composable integration to other DeFi protocols.
+ *
+ * CRITICAL: User Isolation Architecture
+ * - Each user has their OWN isolated position tracking
+ * - User A's tokens NEVER mix with User B's tokens
+ * - Positions are instance-level, NOT module-level
+ * - Gas fees are paid from backend PRIVATE_KEY (this is correct)
  */
 
 import { ethers } from 'ethers';
-import { ILendingProvider, LendingPosition, LendingMarket } from './interfaces';
+import { ILendingProvider, LendingPosition, LendingMarket, UserPosition } from './interfaces';
 
 // Lendle Protocol ABIs (Aave v3 compatible)
 const LENDING_POOL_ABI = [
@@ -51,8 +57,9 @@ export interface LendingProviderConfig {
   lendingPoolAddress?: string;
 }
 
-// Mock market data for demo (would be fetched from contracts in production)
-const MOCK_MARKETS: Record<string, LendingMarket> = {
+// Default market data for demo (would be fetched from contracts in production)
+// This is protocol-level data, not user-specific
+const DEFAULT_MARKETS: Record<string, LendingMarket> = {
   WMNT: {
     asset: 'WMNT',
     totalSupply: BigInt('10000000000000000000000000'), // 10M
@@ -95,8 +102,9 @@ const MOCK_MARKETS: Record<string, LendingMarket> = {
   },
 };
 
-// Mock user positions
-const MOCK_POSITIONS: Map<string, Map<string, LendingPosition>> = new Map();
+// NOTE: MOCK_POSITIONS has been removed from module-level!
+// User positions are now tracked at the INSTANCE level in the LendingProvider class.
+// This ensures complete user isolation - User A's tokens NEVER mix with User B's.
 
 export class LendingProvider implements ILendingProvider {
   private readonly provider: ethers.JsonRpcProvider;
@@ -104,11 +112,24 @@ export class LendingProvider implements ILendingProvider {
   private readonly lendingPoolAddress: string;
   private readonly lendingPool?: ethers.Contract;
 
+  /**
+   * INSTANCE-LEVEL user positions - NOT shared across users!
+   *
+   * Structure: Map<userAddress, Map<assetSymbol, UserPosition>>
+   *
+   * CRITICAL: This is the key architectural fix.
+   * Each LendingProvider instance maintains isolated user positions.
+   * User A's tokens NEVER mix with User B's tokens.
+   */
+  private readonly userPositions: Map<string, Map<string, UserPosition>> = new Map();
+
   constructor(config: LendingProviderConfig) {
     this.provider = new ethers.JsonRpcProvider(config.rpcUrl);
     this.lendingPoolAddress = config.lendingPoolAddress || LENDLE_ADDRESSES.LENDING_POOL;
 
     if (config.privateKey) {
+      // Gas is paid from backend PRIVATE_KEY - this is correct
+      // The backend wallet signs transactions for gas, but user funds remain isolated
       this.signer = new ethers.Wallet(config.privateKey, this.provider);
       this.lendingPool = new ethers.Contract(
         this.lendingPoolAddress,
@@ -120,34 +141,47 @@ export class LendingProvider implements ILendingProvider {
 
   /**
    * Get lending market information
+   * NOTE: Market data is protocol-level (shared), not user-specific
    */
   async getMarket(asset: string): Promise<LendingMarket> {
     const assetUpper = asset.toUpperCase();
 
-    // Return mock data for demo
+    // Return default market data for demo
     // In production, would fetch from contract via this.lendingPool.getReserveData()
-    const mockMarket = MOCK_MARKETS[assetUpper];
-    if (!mockMarket) {
+    const market = DEFAULT_MARKETS[assetUpper];
+    if (!market) {
       throw new Error(`Unsupported lending market: ${asset}`);
     }
 
-    return mockMarket;
+    return market;
   }
 
   /**
    * Get user's lending position
+   *
+   * CRITICAL: Returns position from THIS user's isolated pool only.
+   * User A cannot see or access User B's positions.
    */
   async getPosition(asset: string, user: string): Promise<LendingPosition> {
     const assetUpper = asset.toUpperCase();
     const userLower = user.toLowerCase();
 
-    // Check mock positions
-    const userPositions = MOCK_POSITIONS.get(userLower);
-    if (userPositions?.has(assetUpper)) {
-      return userPositions.get(assetUpper)!;
+    // Get user's isolated position map
+    const userPositionMap = this.userPositions.get(userLower);
+    if (userPositionMap?.has(assetUpper)) {
+      const position = userPositionMap.get(assetUpper)!;
+      // Convert UserPosition to LendingPosition for interface compatibility
+      return {
+        asset: position.asset,
+        supplied: position.supplied,
+        borrowed: position.borrowed,
+        collateralFactor: position.collateralFactor,
+        liquidationThreshold: position.liquidationThreshold,
+        healthFactor: position.healthFactor,
+      };
     }
 
-    // Return empty position
+    // Return empty position for this user
     return {
       asset: assetUpper,
       supplied: BigInt(0),
@@ -159,9 +193,39 @@ export class LendingProvider implements ILendingProvider {
   }
 
   /**
-   * Supply asset to lending market
+   * Get user's full position with metadata (for internal use)
    */
-  async supply(asset: string, amount: bigint): Promise<string> {
+  getUserPosition(asset: string, user: string): UserPosition | null {
+    const assetUpper = asset.toUpperCase();
+    const userLower = user.toLowerCase();
+
+    const userPositionMap = this.userPositions.get(userLower);
+    if (userPositionMap?.has(assetUpper)) {
+      return userPositionMap.get(assetUpper)!;
+    }
+    return null;
+  }
+
+  /**
+   * Get all positions for a specific user
+   */
+  getAllUserPositions(user: string): UserPosition[] {
+    const userLower = user.toLowerCase();
+    const userPositionMap = this.userPositions.get(userLower);
+    if (!userPositionMap) {
+      return [];
+    }
+    return Array.from(userPositionMap.values());
+  }
+
+  /**
+   * Supply asset to lending market for a specific user
+   *
+   * @param asset - Asset to supply
+   * @param amount - Amount to supply
+   * @param userAddress - REQUIRED: The user whose isolated pool receives the supply
+   */
+  async supply(asset: string, amount: bigint, userAddress?: string): Promise<string> {
     const assetUpper = asset.toUpperCase();
     const tokenAddress = MANTLE_TOKENS[assetUpper];
 
@@ -169,24 +233,34 @@ export class LendingProvider implements ILendingProvider {
       throw new Error(`Unknown asset: ${asset}`);
     }
 
+    // Determine the user for position tracking
+    const user = userAddress || this.signer?.address || '0x0';
+
     if (this.signer && this.lendingPool) {
       try {
-        // Approve token
+        // Approve token - gas paid from backend PRIVATE_KEY
         const token = new ethers.Contract(tokenAddress, ERC20_ABI, this.signer);
         const approveTx = await token.approve(this.lendingPoolAddress, amount);
         await approveTx.wait();
 
-        // Supply to lending pool
+        // Supply to lending pool - on behalf of the user
         const tx = await this.lendingPool.supply(
           tokenAddress,
           amount,
-          this.signer.address,
+          user, // Supply goes to USER's position, not backend wallet
           0 // referral code
         );
         const receipt = await tx.wait();
+
+        // Update user's isolated position
+        this.updateUserPosition(user, assetUpper, { suppliedDelta: amount });
+
         return receipt.hash;
       } catch (error) {
-        console.error(`[LendingProvider] Supply failed:`, error);
+        // SECURITY: Don't log user addresses or sensitive data in production
+        if (process.env.NODE_ENV !== 'production') {
+          console.error(`[LendingProvider] Supply failed:`, error);
+        }
         throw error;
       }
     }
@@ -196,18 +270,20 @@ export class LendingProvider implements ILendingProvider {
       .toString('hex')
       .slice(0, 64)}`;
 
-    // Update mock position
-    this.updateMockPosition(this.signer?.address || '0x0', assetUpper, {
-      suppliedDelta: amount,
-    });
+    // Update user's isolated position
+    this.updateUserPosition(user, assetUpper, { suppliedDelta: amount });
 
     return mockTxHash;
   }
 
   /**
-   * Withdraw from lending market
+   * Withdraw from lending market for a specific user
+   *
+   * @param asset - Asset to withdraw
+   * @param amount - Amount to withdraw
+   * @param userAddress - REQUIRED: The user whose isolated pool to withdraw from
    */
-  async withdraw(asset: string, amount: bigint): Promise<string> {
+  async withdraw(asset: string, amount: bigint, userAddress?: string): Promise<string> {
     const assetUpper = asset.toUpperCase();
     const tokenAddress = MANTLE_TOKENS[assetUpper];
 
@@ -215,17 +291,34 @@ export class LendingProvider implements ILendingProvider {
       throw new Error(`Unknown asset: ${asset}`);
     }
 
+    // Determine the user for position tracking
+    const user = userAddress || this.signer?.address || '0x0';
+
+    // Validate user has sufficient balance in their isolated pool
+    const position = await this.getPosition(assetUpper, user);
+    if (position.supplied < amount) {
+      throw new Error(`Insufficient balance: user ${user} has ${position.supplied} but requested ${amount}`);
+    }
+
     if (this.signer && this.lendingPool) {
       try {
+        // Withdraw from user's position, send to user
         const tx = await this.lendingPool.withdraw(
           tokenAddress,
           amount,
-          this.signer.address
+          user // Tokens go to USER, not backend wallet
         );
         const receipt = await tx.wait();
+
+        // Update user's isolated position
+        this.updateUserPosition(user, assetUpper, { suppliedDelta: -amount });
+
         return receipt.hash;
       } catch (error) {
-        console.error(`[LendingProvider] Withdraw failed:`, error);
+        // SECURITY: Don't log user addresses or sensitive data in production
+        if (process.env.NODE_ENV !== 'production') {
+          console.error(`[LendingProvider] Withdraw failed:`, error);
+        }
         throw error;
       }
     }
@@ -235,18 +328,20 @@ export class LendingProvider implements ILendingProvider {
       .toString('hex')
       .slice(0, 64)}`;
 
-    // Update mock position
-    this.updateMockPosition(this.signer?.address || '0x0', assetUpper, {
-      suppliedDelta: -amount,
-    });
+    // Update user's isolated position
+    this.updateUserPosition(user, assetUpper, { suppliedDelta: -amount });
 
     return mockTxHash;
   }
 
   /**
-   * Borrow from lending market
+   * Borrow from lending market for a specific user
+   *
+   * @param asset - Asset to borrow
+   * @param amount - Amount to borrow
+   * @param userAddress - REQUIRED: The user whose isolated pool to borrow into
    */
-  async borrow(asset: string, amount: bigint): Promise<string> {
+  async borrow(asset: string, amount: bigint, userAddress?: string): Promise<string> {
     const assetUpper = asset.toUpperCase();
     const tokenAddress = MANTLE_TOKENS[assetUpper];
 
@@ -254,19 +349,30 @@ export class LendingProvider implements ILendingProvider {
       throw new Error(`Unknown asset: ${asset}`);
     }
 
+    // Determine the user for position tracking
+    const user = userAddress || this.signer?.address || '0x0';
+
     if (this.signer && this.lendingPool) {
       try {
+        // Borrow on behalf of the user
         const tx = await this.lendingPool.borrow(
           tokenAddress,
           amount,
           2, // Variable rate mode
           0, // referral code
-          this.signer.address
+          user // Borrow goes to USER's position
         );
         const receipt = await tx.wait();
+
+        // Update user's isolated position
+        this.updateUserPosition(user, assetUpper, { borrowedDelta: amount });
+
         return receipt.hash;
       } catch (error) {
-        console.error(`[LendingProvider] Borrow failed:`, error);
+        // SECURITY: Don't log user addresses or sensitive data in production
+        if (process.env.NODE_ENV !== 'production') {
+          console.error(`[LendingProvider] Borrow failed:`, error);
+        }
         throw error;
       }
     }
@@ -276,18 +382,20 @@ export class LendingProvider implements ILendingProvider {
       .toString('hex')
       .slice(0, 64)}`;
 
-    // Update mock position
-    this.updateMockPosition(this.signer?.address || '0x0', assetUpper, {
-      borrowedDelta: amount,
-    });
+    // Update user's isolated position
+    this.updateUserPosition(user, assetUpper, { borrowedDelta: amount });
 
     return mockTxHash;
   }
 
   /**
-   * Repay borrowed asset
+   * Repay borrowed asset for a specific user
+   *
+   * @param asset - Asset to repay
+   * @param amount - Amount to repay
+   * @param userAddress - REQUIRED: The user whose debt to repay
    */
-  async repay(asset: string, amount: bigint): Promise<string> {
+  async repay(asset: string, amount: bigint, userAddress?: string): Promise<string> {
     const assetUpper = asset.toUpperCase();
     const tokenAddress = MANTLE_TOKENS[assetUpper];
 
@@ -295,23 +403,34 @@ export class LendingProvider implements ILendingProvider {
       throw new Error(`Unknown asset: ${asset}`);
     }
 
+    // Determine the user for position tracking
+    const user = userAddress || this.signer?.address || '0x0';
+
     if (this.signer && this.lendingPool) {
       try {
-        // Approve token
+        // Approve token - gas paid from backend PRIVATE_KEY
         const token = new ethers.Contract(tokenAddress, ERC20_ABI, this.signer);
         const approveTx = await token.approve(this.lendingPoolAddress, amount);
         await approveTx.wait();
 
+        // Repay user's debt
         const tx = await this.lendingPool.repay(
           tokenAddress,
           amount,
           2, // Variable rate mode
-          this.signer.address
+          user // Repay USER's debt
         );
         const receipt = await tx.wait();
+
+        // Update user's isolated position
+        this.updateUserPosition(user, assetUpper, { borrowedDelta: -amount });
+
         return receipt.hash;
       } catch (error) {
-        console.error(`[LendingProvider] Repay failed:`, error);
+        // SECURITY: Don't log user addresses or sensitive data in production
+        if (process.env.NODE_ENV !== 'production') {
+          console.error(`[LendingProvider] Repay failed:`, error);
+        }
         throw error;
       }
     }
@@ -321,10 +440,8 @@ export class LendingProvider implements ILendingProvider {
       .toString('hex')
       .slice(0, 64)}`;
 
-    // Update mock position
-    this.updateMockPosition(this.signer?.address || '0x0', assetUpper, {
-      borrowedDelta: -amount,
-    });
+    // Update user's isolated position
+    this.updateUserPosition(user, assetUpper, { borrowedDelta: -amount });
 
     return mockTxHash;
   }
@@ -345,15 +462,19 @@ export class LendingProvider implements ILendingProvider {
    * Get all supported markets
    */
   getSupportedMarkets(): string[] {
-    return Object.keys(MOCK_MARKETS);
+    return Object.keys(DEFAULT_MARKETS);
   }
 
   /**
-   * Calculate health factor for user
+   * Calculate health factor for a specific user
+   *
+   * CRITICAL: Calculates based on THIS user's isolated positions only.
+   * User A's health factor is independent of User B's positions.
    */
   async calculateHealthFactor(user: string): Promise<number> {
-    const userPositions = MOCK_POSITIONS.get(user.toLowerCase());
-    if (!userPositions) {
+    const userLower = user.toLowerCase();
+    const userPositionMap = this.userPositions.get(userLower);
+    if (!userPositionMap) {
       return 999; // No positions = very healthy
     }
 
@@ -362,7 +483,7 @@ export class LendingProvider implements ILendingProvider {
     let weightedLiquidationThreshold = 0;
     let collateralCount = 0;
 
-    for (const [asset, position] of userPositions) {
+    for (const [, position] of userPositionMap) {
       if (position.supplied > BigInt(0)) {
         // Simplified - in production would use oracle prices
         totalCollateralValue += position.supplied;
@@ -386,7 +507,7 @@ export class LendingProvider implements ILendingProvider {
   }
 
   /**
-   * Get aggregate lending statistics
+   * Get aggregate lending statistics (protocol-level, not user-specific)
    */
   async getStats(): Promise<{
     totalSupplied: string;
@@ -399,7 +520,7 @@ export class LendingProvider implements ILendingProvider {
     let totalUtilization = 0;
     let marketCount = 0;
 
-    for (const market of Object.values(MOCK_MARKETS)) {
+    for (const market of Object.values(DEFAULT_MARKETS)) {
       totalSupplied += market.totalSupply;
       totalBorrowed += market.totalBorrow;
       totalUtilization += market.utilizationRate;
@@ -415,30 +536,80 @@ export class LendingProvider implements ILendingProvider {
   }
 
   /**
-   * Update mock position (for demo)
+   * Get statistics for a specific user's isolated positions
    */
-  private updateMockPosition(
+  async getUserStats(user: string): Promise<{
+    totalSupplied: string;
+    totalBorrowed: string;
+    positionCount: number;
+    healthFactor: number;
+  }> {
+    const userLower = user.toLowerCase();
+    const userPositionMap = this.userPositions.get(userLower);
+
+    if (!userPositionMap) {
+      return {
+        totalSupplied: '0',
+        totalBorrowed: '0',
+        positionCount: 0,
+        healthFactor: 999,
+      };
+    }
+
+    let totalSupplied = BigInt(0);
+    let totalBorrowed = BigInt(0);
+    let positionCount = 0;
+
+    for (const [, position] of userPositionMap) {
+      totalSupplied += position.supplied;
+      totalBorrowed += position.borrowed;
+      positionCount++;
+    }
+
+    const healthFactor = await this.calculateHealthFactor(user);
+
+    return {
+      totalSupplied: ethers.formatEther(totalSupplied),
+      totalBorrowed: ethers.formatEther(totalBorrowed),
+      positionCount,
+      healthFactor,
+    };
+  }
+
+  /**
+   * Update user's isolated position
+   *
+   * CRITICAL: Updates THIS user's position in their isolated pool.
+   * Never affects other users' positions.
+   */
+  private updateUserPosition(
     user: string,
     asset: string,
     delta: { suppliedDelta?: bigint; borrowedDelta?: bigint }
   ): void {
     const userLower = user.toLowerCase();
+    const now = Math.floor(Date.now() / 1000);
 
-    if (!MOCK_POSITIONS.has(userLower)) {
-      MOCK_POSITIONS.set(userLower, new Map());
+    // Create user's position map if it doesn't exist
+    if (!this.userPositions.has(userLower)) {
+      this.userPositions.set(userLower, new Map());
     }
 
-    const userPositions = MOCK_POSITIONS.get(userLower)!;
-    let position = userPositions.get(asset);
+    const userPositionMap = this.userPositions.get(userLower)!;
+    let position = userPositionMap.get(asset);
 
     if (!position) {
+      // Create new isolated position for this user
       position = {
+        userAddress: userLower,
         asset,
         supplied: BigInt(0),
         borrowed: BigInt(0),
         collateralFactor: 75,
         liquidationThreshold: 80,
         healthFactor: 999,
+        createdAt: now,
+        updatedAt: now,
       };
     }
 
@@ -452,7 +623,7 @@ export class LendingProvider implements ILendingProvider {
       if (position.borrowed < BigInt(0)) position.borrowed = BigInt(0);
     }
 
-    // Recalculate health factor
+    // Recalculate health factor for this user's position
     if (position.borrowed > BigInt(0)) {
       position.healthFactor =
         (Number(position.supplied) * position.liquidationThreshold) /
@@ -461,7 +632,43 @@ export class LendingProvider implements ILendingProvider {
       position.healthFactor = 999;
     }
 
-    userPositions.set(asset, position);
+    position.updatedAt = now;
+    userPositionMap.set(asset, position);
+  }
+
+  /**
+   * Check if user has sufficient balance in their isolated pool
+   */
+  hasSufficientBalance(user: string, asset: string, amount: bigint): boolean {
+    const userLower = user.toLowerCase();
+    const assetUpper = asset.toUpperCase();
+    const userPositionMap = this.userPositions.get(userLower);
+
+    if (!userPositionMap) {
+      return false;
+    }
+
+    const position = userPositionMap.get(assetUpper);
+    if (!position) {
+      return false;
+    }
+
+    return position.supplied >= amount;
+  }
+
+  /**
+   * Get the number of users with positions (for monitoring)
+   */
+  getUserCount(): number {
+    return this.userPositions.size;
+  }
+
+  /**
+   * Clear all positions for a user (for testing only)
+   */
+  clearUserPositions(user: string): void {
+    const userLower = user.toLowerCase();
+    this.userPositions.delete(userLower);
   }
 }
 

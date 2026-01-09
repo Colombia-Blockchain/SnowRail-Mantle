@@ -33,11 +33,13 @@ export class PriceService {
 
   // Coin ID mappings for different APIs
   private readonly coinIds: Record<string, { coingecko: string; cryptocom: string }> = {
-    CRO: { coingecko: 'cronos', cryptocom: 'CRO' },
+    MNT: { coingecko: 'mantle', cryptocom: 'MNT' },
     ETH: { coingecko: 'ethereum', cryptocom: 'ETH' },
+    METH: { coingecko: 'meth', cryptocom: 'METH' },
     BTC: { coingecko: 'bitcoin', cryptocom: 'BTC' },
     USDC: { coingecko: 'usd-coin', cryptocom: 'USDC' },
     USDT: { coingecko: 'tether', cryptocom: 'USDT' },
+    USDY: { coingecko: 'ondo-us-dollar-yield', cryptocom: 'USDY' },
   };
 
   constructor(private logger: FastifyInstance['log']) {}
@@ -194,7 +196,7 @@ export class PriceService {
         {
           signal: controller.signal,
           headers: {
-            'User-Agent': 'Cronos-X402-Agent/1.0',
+            'User-Agent': 'SnowRail-Mantle-Agent/1.0',
           },
         }
       );

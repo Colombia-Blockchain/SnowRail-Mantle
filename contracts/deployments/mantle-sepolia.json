@@ -14,12 +14,22 @@
       ]
     },
     "ZKMixer": {
+      "address": "0xC75C1F03AA60Bd254e43Df21780abFa142070e9C",
+      "deploymentTx": "pending",
+      "deploymentBlock": 33189000,
+      "deployedAt": "2026-01-09T01:40:00.000Z",
+      "deployer": "0x40C7fa08031dB321245a2f96E6064D2cF269f18B",
+      "constructorArgs": [],
+      "note": "V2 with enhanced proof validation"
+    },
+    "ZKMixer_V1_DEPRECATED": {
       "address": "0x9C7dC7C8D6156441D5D5eCF43B33F960331c4600",
       "deploymentTx": "0x08ab51483f3473ad45567256407a48cee46a310afebb7980dcffc5ce7172f86f",
       "deploymentBlock": 33135338,
       "deployedAt": "2026-01-07T19:49:11.962Z",
       "deployer": "0x40C7fa08031dB321245a2f96E6064D2cF269f18B",
-      "constructorArgs": []
+      "constructorArgs": [],
+      "note": "DEPRECATED - Old version with weak proof validation"
     }
   },
   "deployedAt": "2026-01-07T19:48:58.952Z"

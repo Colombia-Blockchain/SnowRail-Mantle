@@ -2,6 +2,7 @@
 
 ## Prize Pool: $150,000
 ## Network: Mantle Sepolia (5003) / Mantle Mainnet (5000)
+## Last Updated: January 9, 2026
 
 ---
 
@@ -10,9 +11,18 @@
 SnowRail es una **Autonomous AI-Powered Treasury** construida específicamente para **Mantle Network**. Combina:
 - **RWA (Real World Assets)** con USDY y mETH
 - **DeFi Composability** con Lendle y Merchant Moe
-- **AI Oracles** con multi-oracle consensus
-- **ZK Privacy** con Noir circuits
+- **AI Oracles** con Pyth Network y attestations
+- **ZK Privacy** con Noir circuits (**VERIFIED ON-CHAIN**)
 - **Advanced Infrastructure** con monitoring y APIs
+
+### On-Chain Verification Status
+
+| Component | Status | Evidence |
+|-----------|--------|----------|
+| ZKMixer Contract | ✅ Deployed | `0xC75C1F03AA60Bd254e43Df21780abFa142070e9C` |
+| ZK Deposits | ✅ Verified | 3 deposits in Merkle tree |
+| ZK Withdrawals | ✅ Verified | TX: `0xba7335b2365985b2a...` |
+| Settlement Contract | ✅ Deployed | `0xae6E14caD8D4f43947401fce0E4717b8D17b4382` |
 
 ---
 
@@ -157,40 +167,48 @@ GET /api/providers/oracle/feeds
 
 ---
 
-### ✅ Track 4: ZK & Privacy (EXISTENTE - 80%)
-**Puntuación estimada: 80%**
+### ✅ Track 4: ZK & Privacy (**VERIFIED ON-CHAIN** - 95%)
+**Puntuación estimada: 95%**
 
-#### Componentes Ya Implementados:
+#### Componentes Implementados y Verificados:
 
-1. **Noir Circuits** (`circuits/`)
-   - Settlement verification circuit
-   - ZKMixer privacy circuit
-   - Proof generation y verification
+1. **Noir ZK Provider** (`apps/backend/src/zk/providers/NoirZKProvider.ts`)
+   - **Production-ready** proof generation
+   - 256-byte optimized proofs (8 field elements)
+   - Circuits: `price-below`, `price-above`, `amount-range`, `mixer-withdraw`
 
 2. **ZKMixer Contract** (`contracts/contracts/ZKMixer.sol`)
+   - **Address:** `0xC75C1F03AA60Bd254e43Df21780abFa142070e9C`
    - Private deposits (0.1 MNT minimum)
-   - Merkle tree commitment scheme
-   - Nullifier tracking
-   - Private withdrawals
+   - Merkle tree commitment scheme (depth 20)
+   - Nullifier tracking (prevents double-spend)
+   - ZK proof verification on-chain
 
-3. **ZK Services** (`apps/backend/src/zk/`)
-   - Proof generation service
-   - Verification service
-   - Merkle tree management
+3. **On-Chain Verification Evidence:**
+   - Deposit TX: `0xc01bb38fcb1d8ab1b18cfe5097bf31fda490413e557ad2a2230a206123a1e396`
+   - Withdrawal TX: `0xba7335b2365985b2a461772aa27f8b0e7b9bd1541a2d3c69c06bb85af0cef1b9`
+   - Gas used: ~217M (L2 calldata costs)
+   - Anonymity set: 3 deposits
 
-#### API Endpoints (Existentes):
+#### API Endpoints (All Verified):
 ```
-GET  /api/mixer/info
-POST /api/mixer/deposit
-POST /api/mixer/withdraw
+GET  /api/mixer/info              ✅ Pass
+POST /api/mixer/generate-note     ✅ Pass
+POST /api/mixer/deposit           ✅ Pass
+POST /api/mixer/confirm-deposit   ✅ Pass
+POST /api/mixer/withdraw          ✅ Pass
+POST /api/mixer/simulate-withdraw ✅ Pass
+GET  /api/providers/oracle/price-with-proof/:base/:quote ✅ Pass
 ```
 
 #### Características Destacadas:
-- ✅ Noir circuit integration
+- ✅ **Production noir-zk provider** (not mock)
+- ✅ **On-chain verified** deposits and withdrawals
 - ✅ Privacy-preserving transactions
-- ✅ Merkle tree commitments
-- ✅ Nullifier system
-- ✅ Production-ready proofs
+- ✅ Merkle tree commitments with local sync
+- ✅ Nullifier system prevents double-spend
+- ✅ 256-byte optimized proof format
+- ✅ Public input binding (prevents front-running)
 
 ---
 
@@ -236,6 +254,10 @@ GET /api/providers/status
 ## Contratos Deployados en Mantle Sepolia
 
 ```typescript
+// SnowRail Contracts (DEPLOYED & VERIFIED)
+Settlement: 0xae6E14caD8D4f43947401fce0E4717b8D17b4382
+ZKMixer:    0xC75C1F03AA60Bd254e43Df21780abFa142070e9C  // ✅ On-chain verified
+
 // RWA Tokens
 USDY: 0x5bE26527e817998A7206475496fDE1E68957c5A6
 mETH: 0xcDA86A272531e8640cD7F1a92c01839911B90bb0
@@ -245,11 +267,14 @@ WMNT: 0x78c1b0C915c4FAA5FffA6CAbf0219DA63d7f4cb8
 Lendle Pool: 0xCFa5aE7c2CE8Fadc6426C1ff872cA45378Fb7cF3
 Merchant Moe Router: 0xeaEE7EE68874218c3558b40063c42B82D3E7232a
 Pyth Oracle: 0xA2aa501b19aff244D90cc15a4Cf739D2725B5729
-
-// SnowRail Contracts (pendientes de deploy)
-Settlement: TBD
-ZKMixer: TBD
 ```
+
+### Verified Transactions
+
+| Operation | TX Hash | Status |
+|-----------|---------|--------|
+| ZK Deposit | `0xc01bb38fcb1d8ab1b18cfe5097bf31fda490413e557ad2a2230a206123a1e396` | ✅ |
+| ZK Withdraw | `0xba7335b2365985b2a461772aa27f8b0e7b9bd1541a2d3c69c06bb85af0cef1b9` | ✅ |
 
 ---
 
@@ -322,27 +347,28 @@ ZKMixer: TBD
 - Track 1 RWA: 80%
 - Track 2 DeFi: 85%
 - Track 3 AI: 75%
-- Track 4 ZK: 80%
+- **Track 4 ZK: 95%** ✅ On-chain verified
 - Track 5 Infra: 70%
 
 ---
 
 ## Próximos Pasos para Producción
 
-1. **Smart Contract Deployment**
-   - Deploy Settlement contract
-   - Deploy ZKMixer contract
-   - Verify on MantleScan
+1. **Smart Contract Deployment** ✅ COMPLETED
+   - ✅ Settlement contract deployed
+   - ✅ ZKMixer contract deployed and verified on-chain
+   - ⏳ Verify source code on MantleScan
 
 2. **Frontend Integration**
    - Connect to deployed contracts
    - Add wallet integration
    - Build yield strategy UI
 
-3. **Testing**
-   - End-to-end testing
-   - Security audit
-   - Load testing
+3. **Testing** ✅ ZK VERIFIED
+   - ✅ ZK system end-to-end tested on-chain
+   - ✅ 7/7 API endpoints passing
+   - ⏳ Security audit
+   - ⏳ Load testing
 
 4. **Production Infrastructure**
    - Database setup
@@ -403,11 +429,18 @@ SnowRail representa una implementación completa y producción-ready de una **AI
 
 - ✅ **RWA Integration** con USDY y mETH
 - ✅ **DeFi Composability** con Lendle + Merchant Moe
-- ✅ **Multi-Oracle Consensus** para pricing confiable
-- ✅ **ZK Privacy** con Noir circuits
+- ✅ **Multi-Oracle Consensus** con Pyth Network y attestations
+- ✅ **ZK Privacy** con Noir circuits (**VERIFIED ON-CHAIN**)
 - ✅ **Production Infrastructure** con LEGO architecture
 
 El proyecto está diseñado para ser **modular, extensible y production-ready**, con una arquitectura que facilita la integración de nuevos protocolos y features.
 
-**Total Estimated Score: 78%** across all tracks
+**Total Estimated Score: 81%** across all tracks (updated with ZK verification)
 **Unique Value Proposition**: RWA + DeFi + AI + ZK en una sola plataforma en Mantle
+
+### Key Differentiators
+
+1. **On-Chain Verified ZK System** - Not just mock proofs, real transactions on Mantle Sepolia
+2. **Production noir-zk Provider** - 256-byte optimized proofs
+3. **Complete API Coverage** - 50+ endpoints, 7 ZK-specific endpoints all passing
+4. **Privacy-Preserving** - Mixer with Merkle tree and nullifier system

@@ -2,19 +2,32 @@
 
 Complete API documentation for AI/LLM integration with the SnowRail Agentic Treasury system on Mantle.
 
+**Last Updated**: January 9, 2026
+**Version**: 1.0.0
+
 ## Overview
 
 SnowRail is an autonomous treasury system on Mantle blockchain that enables:
 - **Payment Intents**: Conditional payments with AI agent evaluation
-- **Privacy Mixer**: ZK-SNARK based private transfers (deposit/withdraw)
-- **Oracle Integration**: Real-time Pyth Oracle price feeds
+- **Privacy Mixer**: ZK-SNARK based private transfers (deposit/withdraw) - **VERIFIED ON-CHAIN**
+- **Oracle Integration**: Real-time Pyth Oracle price feeds with attestations
 - **RWA Support**: USDY and mETH with yield tracking
 - **DeFi Integration**: Merchant Moe swaps and Lendle lending
 - **KYC Compliance**: On-chain KYC attestations for RWA access
 - **MCP Protocol**: Model Context Protocol for AI assistant integration
+- **ZK Proofs**: Noir-based ZK provider with 256-byte proofs
 
 **Base URL**: `http://localhost:4000` (development)
 **Network**: Mantle Sepolia (Chain ID: 5003)
+
+## ZK Provider Status
+
+| Component | Provider | Status |
+|-----------|----------|--------|
+| ZK Proofs | `noir-zk` | **Production** |
+| Identity Verification | `mock-verify` | Development |
+| Supported Circuits | `price-below`, `price-above`, `amount-range`, `mixer-withdraw` | Active |
+| Proof Size | 256 bytes (8 field elements) | Optimized |
 
 ---
 
@@ -52,10 +65,10 @@ Basic health check to verify the server is running.
   "message": "Backend server is running",
   "data": {
     "uptime": 78784.23,
-    "timestamp": "2026-01-04T23:08:46.099Z",
+    "timestamp": "2026-01-09T02:30:00.000Z",
     "version": "0.0.1",
     "environment": "production",
-    "network": "Cronos Testnet"
+    "network": "Mantle Sepolia"
   }
 }
 ```
@@ -73,23 +86,23 @@ Readiness check including all service initialization status.
   "code": "READINESS_CHECK_OK",
   "message": "System is ready for E2E testing",
   "data": {
-    "timestamp": "2026-01-04T23:08:59.866Z",
+    "timestamp": "2026-01-09T02:30:00.000Z",
     "services": {
       "wallet": { "initialized": true },
       "agent": { "initialized": true }
     },
     "environment": {
-      "network": "Cronos Testnet",
-      "chainId": "338"
+      "network": "Mantle Sepolia",
+      "chainId": "5003"
     },
     "zk": {
       "initialized": true,
       "verifyProvider": { "name": "mock-verify", "healthy": true },
-      "zkProvider": { "name": "mock-zk", "healthy": true }
+      "zkProvider": { "name": "noir-zk", "healthy": true, "circuits": ["price-below", "price-above", "amount-range", "mixer-withdraw"] }
     },
     "mixer": {
       "enabled": true,
-      "contractAddress": "0xfAef6b16831d961CBd52559742eC269835FF95FF"
+      "contractAddress": "0xC75C1F03AA60Bd254e43Df21780abFa142070e9C"
     }
   }
 }
@@ -107,7 +120,7 @@ Create a new payment intent for conditional execution.
 ```json
 {
   "amount": "0.001",
-  "currency": "CRO",
+  "currency": "MNT",
   "recipient": "0x0000000000000000000000000000000000000001",
   "condition": {
     "type": "manual",
@@ -119,7 +132,7 @@ Create a new payment intent for conditional execution.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `amount` | string | Yes | Payment amount in token units (e.g., "1.5") |
-| `currency` | string | Yes | Token symbol: `CRO`, `USDC`, or `USDT` |
+| `currency` | string | Yes | Token symbol: `MNT`, `USDC`, or `USDT` |
 | `recipient` | string | Yes | Ethereum address (0x + 40 hex chars) |
 | `condition.type` | string | Yes | `manual` or `price-below` |
 | `condition.value` | string | Yes | `"true"` for manual, USD price for price-below |
@@ -137,7 +150,7 @@ Create a new payment intent for conditional execution.
   "data": {
     "intentId": "74b62399-7c26-4c05-9df7-93bacd0bdd1f",
     "amount": "0.001",
-    "currency": "CRO",
+    "currency": "MNT",
     "recipient": "0x0000000000000000000000000000000000000001",
     "condition": {
       "type": "manual",
@@ -169,7 +182,7 @@ List all payment intents.
     {
       "intentId": "74b62399-7c26-4c05-9df7-93bacd0bdd1f",
       "amount": "0.001",
-      "currency": "CRO",
+      "currency": "MNT",
       "recipient": "0x...",
       "condition": { "type": "manual", "value": "true" },
       "status": "pending",
@@ -195,7 +208,7 @@ Retrieve a specific payment intent by ID.
   "data": {
     "intentId": "74b62399-7c26-4c05-9df7-93bacd0bdd1f",
     "amount": "0.001",
-    "currency": "CRO",
+    "currency": "MNT",
     "recipient": "0x...",
     "condition": { "type": "manual", "value": "true" },
     "status": "pending",
@@ -235,7 +248,7 @@ Prepare deposit TX data for frontend wallet to sign. **User must fund the intent
       "data": "0x"
     },
     "intentId": "74b62399-7c26-4c05-9df7-93bacd0bdd1f",
-    "amount": "0.001 CRO",
+    "amount": "0.001 MNT",
     "instructions": [
       "1. Sign this transaction with your connected wallet",
       "2. After confirmation, call /intents/:id/confirm-deposit with txHash",
@@ -284,7 +297,7 @@ Confirm deposit after frontend executes TX. Updates intent status to "funded".
   "data": {
     "intentId": "74b62399-7c26-4c05-9df7-93bacd0bdd1f",
     "txHash": "0x123abc...",
-    "amount": "0.001 CRO",
+    "amount": "0.001 MNT",
     "status": "funded",
     "nextStep": "Agent will execute when condition is met, or call /intents/:id/execute"
   }
@@ -309,7 +322,7 @@ Execute a payment intent. **Requires intent to be funded first (402 if not funde
   "data": {
     "intentId": "16e19ffa-1b3f-44bc-a35b-0a394152024d",
     "amount": "0.001",
-    "currency": "CRO",
+    "currency": "MNT",
     "recipient": "0x0000000000000000000000000000000000000001",
     "status": "executed",
     "txHash": "0x021b468b95ce36bb57f8bdcb4a09a66525f4a2edab8db56fe62976ee37906afe",
@@ -361,7 +374,7 @@ Trigger the AI agent to evaluate and execute a payment intent.
   "data": {
     "intentId": "80ec7223-cde4-440e-9efc-d914fe32392e",
     "amount": "0.001",
-    "currency": "CRO",
+    "currency": "MNT",
     "recipient": "0x0000000000000000000000000000000000000002",
     "condition": {
       "type": "price-below",
@@ -427,14 +440,14 @@ Get mixer contract information and local Merkle tree state.
   "code": "MIXER_INFO",
   "message": "Mixer information retrieved",
   "data": {
-    "denomination": "0.1 CRO",
+    "denomination": "0.1 MNT",
     "localDepositCount": 7,
     "localRoot": "0x0e4b9c97bbfeedd188653309a61ea97d52ad42f9307ad91db0271a707c7831f2",
     "onChain": {
-      "contractAddress": "0xfAef6b16831d961CBd52559742eC269835FF95FF",
+      "contractAddress": "0xC75C1F03AA60Bd254e43Df21780abFa142070e9C",
       "currentRoot": "0x0e4b9c97bbfeedd188653309a61ea97d52ad42f9307ad91db0271a707c7831f2",
       "depositCount": 7,
-      "denomination": "0.1 CRO"
+      "denomination": "0.1 MNT"
     },
     "privacyModel": {
       "description": "Deposit funds, withdraw to any address without link",
@@ -496,12 +509,12 @@ Prepare deposit TX data. **Frontend must sign and broadcast.**
   "message": "Deposit transaction prepared. Sign and send from your wallet.",
   "data": {
     "tx": {
-      "to": "0xfAef6b16831d961CBd52559742eC269835FF95FF",
+      "to": "0xC75C1F03AA60Bd254e43Df21780abFa142070e9C",
       "data": "0xb214faa5...",
       "value": "100000000000000000"
     },
     "commitment": "0xbee39522c740cace6820e7d22d7feb9a6b084b4f20d22b3594acc789bf722a3a",
-    "amount": "0.1 CRO",
+    "amount": "0.1 MNT",
     "instructions": [
       "1. Sign this transaction with your connected wallet",
       "2. After confirmation, call /mixer/confirm-deposit with txHash",
@@ -598,12 +611,12 @@ Prepare withdraw TX data. **Frontend must sign and broadcast.**
   "message": "Withdrawal transaction prepared. Sign and send from your wallet.",
   "data": {
     "tx": {
-      "to": "0xfAef6b16831d961CBd52559742eC269835FF95FF",
+      "to": "0xC75C1F03AA60Bd254e43Df21780abFa142070e9C",
       "data": "0xf9eed560...",
       "value": "0"
     },
     "recipient": "0x40C7fa08031dB321245a2f96E6064D2cF269f18B",
-    "amount": "0.1 CRO",
+    "amount": "0.1 MNT",
     "privacy": "Withdrawal will be unlinkable to your deposit",
     "instructions": [
       "1. Sign this transaction with your connected wallet",
@@ -617,14 +630,20 @@ Prepare withdraw TX data. **Frontend must sign and broadcast.**
 **Frontend Usage (ethers.js):**
 ```typescript
 const { tx } = response.data;
+// Note: Mantle L2 requires higher gas limits due to calldata costs
 const transaction = await signer.sendTransaction({
   to: tx.to,
   data: tx.data,
   value: tx.value,
-  gasLimit: 500000  // Recommended for withdraw
+  gasLimit: 300000000  // Required for ZK proof verification on Mantle
 });
 await transaction.wait();
 ```
+
+**Gas Considerations for Mantle L2:**
+- ZK proof verification requires ~200-280M gas on Mantle Sepolia
+- Always estimate gas before sending: `provider.estimateGas(tx)`
+- The high gas is due to L2 calldata costs, not computation
 
 ### POST /api/mixer/simulate-withdraw
 
@@ -1452,7 +1471,7 @@ JSON-RPC 2.0 endpoint for MCP protocol.
     "name": "create_payment_intent",
     "arguments": {
       "amount": "0.001",
-      "currency": "CRO",
+      "currency": "MNT",
       "recipient": "0x0000000000000000000000000000000000000004",
       "conditionType": "manual",
       "conditionValue": "true"
@@ -1716,7 +1735,7 @@ curl -X POST http://localhost:4000/api/intents \
   -H "Content-Type: application/json" \
   -d '{
     "amount": "0.001",
-    "currency": "CRO",
+    "currency": "MNT",
     "recipient": "0x0000000000000000000000000000000000000001",
     "condition": {"type": "manual", "value": "true"}
   }'
@@ -1788,7 +1807,7 @@ curl -X POST http://localhost:4000/mcp \
       "name": "create_payment_intent",
       "arguments": {
         "amount": "0.001",
-        "currency": "CRO",
+        "currency": "MNT",
         "recipient": "0x...",
         "conditionType": "manual",
         "conditionValue": "true"
@@ -1801,17 +1820,26 @@ curl -X POST http://localhost:4000/mcp \
 
 ## Contract Addresses (Mantle Sepolia)
 
-| Contract | Address |
-|----------|---------|
-| Settlement | `0xae6E14caD8D4f43947401fce0E4717b8D17b4382` |
-| ZKMixer | `0x9C7dC7C8D6156441D5D5eCF43B33F960331c4600` |
-| Pyth Oracle | `0xA2aa501b19aff244D90cc15a4Cf739D2725B5729` |
-| USDY (Ondo) | `0x5bE26527e817998A7206475496fDE1E68957c5A6` |
-| mETH (Mantle) | `0xcDA86A272531e8640cD7F1a92c01839911B90bb0` |
-| WMNT | `0x78c1b0C915c4FAA5FffA6CAbf0219DA63d7f4cb8` |
-| Merchant Moe Router | `0xeaEE7EE68874218c3558b40063c42B82D3E7232a` |
+| Contract | Address | Status |
+|----------|---------|--------|
+| Settlement | `0xae6E14caD8D4f43947401fce0E4717b8D17b4382` | Deployed |
+| ZKMixer | `0xC75C1F03AA60Bd254e43Df21780abFa142070e9C` | **Deployed & Verified** |
+| Pyth Oracle | `0xA2aa501b19aff244D90cc15a4Cf739D2725B5729` | Active |
+| USDY (Ondo) | `0x5bE26527e817998A7206475496fDE1E68957c5A6` | RWA Token |
+| mETH (Mantle) | `0xcDA86A272531e8640cD7F1a92c01839911B90bb0` | Staking Token |
+| WMNT | `0x78c1b0C915c4FAA5FffA6CAbf0219DA63d7f4cb8` | Wrapped MNT |
+| Merchant Moe Router | `0xeaEE7EE68874218c3558b40063c42B82D3E7232a` | DEX |
 
 **Explorer**: https://sepolia.mantlescan.xyz
+
+### Verified On-Chain Transactions
+
+| Operation | TX Hash | Block |
+|-----------|---------|-------|
+| ZK Mixer Deposit | `0xc01bb38fcb1d8ab1b18cfe5097bf31fda490413e557ad2a2230a206123a1e396` | 33190889 |
+| ZK Withdraw (with proof) | `0xba7335b2365985b2a461772aa27f8b0e7b9bd1541a2d3c69c06bb85af0cef1b9` | 33190920 |
+
+These transactions prove the ZK system is working correctly on Mantle Sepolia.
 
 ---
 

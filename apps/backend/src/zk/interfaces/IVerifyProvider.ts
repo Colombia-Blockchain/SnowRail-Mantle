@@ -5,7 +5,7 @@
  * Implementations can be swapped without changing consumer code.
  *
  * Current implementations:
- * - CronosVerifyProvider: Cronos Verify integration
+ * - WorldcoinVerifyProvider: World ID integration (production)
  * - MockVerifyProvider: Testing/development
  */
 

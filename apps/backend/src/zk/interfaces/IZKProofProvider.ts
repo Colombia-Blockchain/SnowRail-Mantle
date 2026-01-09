@@ -9,7 +9,7 @@
  * - MockZKProvider: Testing/development
  */
 
-export type ZKConditionType = 'price-below' | 'price-above' | 'amount-range' | 'custom';
+export type ZKConditionType = 'price-below' | 'price-above' | 'amount-range' | 'mixer-withdraw' | 'custom';
 
 export interface ZKProofInput {
   /** Type of condition to prove */

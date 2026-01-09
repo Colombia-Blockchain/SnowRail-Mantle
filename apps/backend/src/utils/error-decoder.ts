@@ -27,7 +27,7 @@ export function decodeCustomError(error: unknown): string {
 
   // Custom error selectors from Settlement contract
   const customErrors: Record<string, string> = {
-    '0x7ba5ffb5': 'InsufficientBalance - Contract does not have enough CRO to execute the transfer',
+    '0x7ba5ffb5': 'InsufficientBalance - Contract does not have enough MNT to execute the transfer',
     '0x7bad85c6': 'IntentAlreadyExecuted - This intent has already been executed',
     '0x82b42900': 'Unauthorized - Caller is not authorized to execute settlements',
     '0x90b8ec6a': 'TransferFailed - Failed to transfer ETH to recipient',
@@ -51,9 +51,9 @@ export function decodeCustomError(error: unknown): string {
         ['uint256', 'uint256'],
         '0x' + errorData.slice(10)
       );
-      return `InsufficientBalance: Requested ${ethers.formatEther(decoded[0])} CRO but only ${ethers.formatEther(decoded[1])} CRO available (raw: requested=${decoded[0].toString()}, available=${decoded[1].toString()})`;
+      return `InsufficientBalance: Requested ${ethers.formatEther(decoded[0])} MNT but only ${ethers.formatEther(decoded[1])} MNT available (raw: requested=${decoded[0].toString()}, available=${decoded[1].toString()})`;
     } catch {
-      return 'InsufficientBalance - Contract does not have enough CRO';
+      return 'InsufficientBalance - Contract does not have enough MNT';
     }
   }
 

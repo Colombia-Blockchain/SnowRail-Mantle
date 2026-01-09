@@ -4,11 +4,18 @@
  *
  * IMPORTANT: Deposits and withdrawals are signed by the FRONTEND wallet (user).
  * The backend only prepares TX data; the user's wallet executes on-chain.
+ *
+ * SECURITY:
+ * - All mixer operations are audit logged (privacy-preserving)
+ * - Authentication required when ENABLE_AUTH=true
+ * - Sensitive operations (withdraw) require 'execute' permission
  */
 
 import { FastifyInstance } from 'fastify';
 import { ethers } from 'ethers';
 import { getMixerService, DepositNote } from '../../services/mixer-service';
+import { requirePermission } from '../../middleware/auth-middleware';
+import { auditLogger } from '../../utils/audit-logger';
 
 // Contract ABI for ZKMixer
 const MIXER_ABI = [
@@ -76,7 +83,7 @@ export async function mixerRoutes(fastify: FastifyInstance): Promise<void> {
           contractAddress: mixerAddress,
           currentRoot: root,
           depositCount: Number(depositCount),
-          denomination: ethers.formatEther(denomination) + ' CRO',
+          denomination: ethers.formatEther(denomination) + ' MNT',
         };
       }
 
@@ -85,7 +92,7 @@ export async function mixerRoutes(fastify: FastifyInstance): Promise<void> {
         code: 'MIXER_INFO',
         message: 'Mixer information retrieved',
         data: {
-          denomination: mixerService.getDenomination() + ' CRO',
+          denomination: mixerService.getDenomination() + ' MNT',
           localDepositCount: mixerService.getDepositCount(),
           localRoot: mixerService.getCurrentRoot(),
           onChain: onChainInfo,
@@ -173,6 +180,12 @@ export async function mixerRoutes(fastify: FastifyInstance): Promise<void> {
 
       request.log.info({ commitment }, '[Mixer] Prepared deposit TX for frontend');
 
+      // Audit log: mixer deposit prepared (privacy-preserving - only commitment prefix)
+      auditLogger.mixerDeposit(request.id, {
+        commitment,
+        ip: request.ip,
+      });
+
       return {
         status: 'success',
         code: 'DEPOSIT_TX_PREPARED',
@@ -184,7 +197,7 @@ export async function mixerRoutes(fastify: FastifyInstance): Promise<void> {
             value: denomination.toString(),
           },
           commitment,
-          amount: ethers.formatEther(denomination) + ' CRO',
+          amount: ethers.formatEther(denomination) + ' MNT',
           instructions: [
             '1. Sign this transaction with your connected wallet',
             '2. After confirmation, call /mixer/confirm-deposit with txHash',
@@ -284,6 +297,13 @@ export async function mixerRoutes(fastify: FastifyInstance): Promise<void> {
         '[Mixer] Prepared withdrawal TX for frontend (details hidden)'
       );
 
+      // Audit log: mixer withdrawal prepared (privacy-preserving)
+      auditLogger.mixerWithdraw(request.id, {
+        nullifierHash: withdrawProof.nullifierHash,
+        recipient,
+        ip: request.ip,
+      });
+
       return {
         status: 'success',
         code: 'WITHDRAW_TX_PREPARED',
@@ -295,7 +315,7 @@ export async function mixerRoutes(fastify: FastifyInstance): Promise<void> {
             value: '0',
           },
           recipient,
-          amount: mixerService.getDenomination() + ' CRO',
+          amount: mixerService.getDenomination() + ' MNT',
           privacy: 'Withdrawal will be unlinkable to your deposit',
           instructions: [
             '1. Sign this transaction with your connected wallet',

@@ -5,10 +5,142 @@ import { getAgentService } from "../../services/agent-service";
 import { Orchestrator } from "../../x402/orchestrator";
 import { decodeCustomError } from "../../utils/error-decoder";
 import { ethers } from "ethers";
+import { auditLogger } from "../../utils/audit-logger";
 
-// Validation helper
+// ============================================
+// Input Validation Constants
+// ============================================
+
+// Amount validation bounds
+const MIN_AMOUNT = 0.000001; // Minimum 1 wei equivalent
+const MAX_AMOUNT = 1000000;  // Maximum 1 million units
+const AMOUNT_DECIMALS = 18;  // Maximum decimal places
+
+// Price threshold bounds for price-below condition
+const MIN_PRICE_THRESHOLD = 0.00001;
+const MAX_PRICE_THRESHOLD = 1000000;
+
+// Supported currencies
+const SUPPORTED_CURRENCIES = ['MNT', 'ETH', 'USDC', 'USDT', 'USDY', 'mETH'];
+
+// Request expiration (prevent replay attacks)
+const MAX_REQUEST_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
+// ============================================
+// Validation Helpers
+// ============================================
+
+/**
+ * Validate Ethereum address using ethers.js
+ */
 function isValidEthereumAddress(address: string): boolean {
-  return /^0x[a-fA-F0-9]{40}$/.test(address);
+  return ethers.isAddress(address);
+}
+
+/**
+ * Validate amount is positive and within bounds
+ */
+function validateAmount(amount: string): { valid: boolean; error?: string } {
+  const num = parseFloat(amount);
+
+  if (isNaN(num)) {
+    return { valid: false, error: "amount must be a valid number" };
+  }
+
+  if (num <= 0) {
+    return { valid: false, error: "amount must be positive" };
+  }
+
+  if (num < MIN_AMOUNT) {
+    return { valid: false, error: `amount must be at least ${MIN_AMOUNT}` };
+  }
+
+  if (num > MAX_AMOUNT) {
+    return { valid: false, error: `amount must not exceed ${MAX_AMOUNT}` };
+  }
+
+  // Check for excessive decimal places (potential precision attack)
+  const decimalPart = amount.split('.')[1];
+  if (decimalPart && decimalPart.length > AMOUNT_DECIMALS) {
+    return { valid: false, error: `amount cannot have more than ${AMOUNT_DECIMALS} decimal places` };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validate price threshold for price-below condition
+ */
+function validatePriceThreshold(value: string): { valid: boolean; error?: string } {
+  const num = parseFloat(value);
+
+  if (isNaN(num)) {
+    return { valid: false, error: "price threshold must be a valid number" };
+  }
+
+  if (num <= 0) {
+    return { valid: false, error: "price threshold must be positive" };
+  }
+
+  if (num < MIN_PRICE_THRESHOLD) {
+    return { valid: false, error: `price threshold must be at least ${MIN_PRICE_THRESHOLD}` };
+  }
+
+  if (num > MAX_PRICE_THRESHOLD) {
+    return { valid: false, error: `price threshold must not exceed ${MAX_PRICE_THRESHOLD}` };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validate currency is supported
+ */
+function validateCurrency(currency: string): { valid: boolean; error?: string } {
+  if (!SUPPORTED_CURRENCIES.includes(currency.toUpperCase())) {
+    return {
+      valid: false,
+      error: `currency must be one of: ${SUPPORTED_CURRENCIES.join(', ')}`
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validate transaction hash format
+ */
+function isValidTxHash(hash: string): boolean {
+  return /^0x[a-fA-F0-9]{64}$/.test(hash);
+}
+
+/**
+ * Validate timestamp is not expired (for request freshness)
+ */
+function validateTimestamp(timestamp?: number): { valid: boolean; error?: string } {
+  if (!timestamp) {
+    return { valid: true }; // Optional field
+  }
+
+  const now = Date.now();
+
+  if (timestamp > now + 60000) { // Allow 1 minute clock skew
+    return { valid: false, error: "timestamp is in the future" };
+  }
+
+  if (now - timestamp > MAX_REQUEST_AGE_MS) {
+    return { valid: false, error: "request has expired" };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Sanitize string input to prevent injection
+ */
+function sanitizeString(input: string, maxLength: number = 256): string {
+  if (!input) return '';
+  // Remove control characters and limit length
+  return input.replace(/[\x00-\x1F\x7F]/g, '').slice(0, maxLength);
 }
 
 // Create intent handler
@@ -22,45 +154,86 @@ export async function createIntent(
         type?: string;
         value?: string;
       };
+      timestamp?: number; // Optional: for request freshness validation
     };
   }>,
   reply: FastifyReply
 ): Promise<void> {
   try {
-    const { amount, currency, recipient, condition } = request.body;
+    const { amount, currency, recipient, condition, timestamp } = request.body;
 
-    // Validation
+    // ============================================
+    // Enhanced Input Validation
+    // ============================================
     const errors: string[] = [];
 
-    if (!amount) errors.push("amount is required");
-    else if (isNaN(Number(amount)) || Number(amount) <= 0) {
-      errors.push("amount must be a positive number");
+    // Validate request timestamp (anti-replay)
+    const timestampValidation = validateTimestamp(timestamp);
+    if (!timestampValidation.valid && timestamp) {
+      errors.push(timestampValidation.error!);
     }
 
-    if (!currency) errors.push("currency is required");
+    // Validate amount
+    if (!amount) {
+      errors.push("amount is required");
+    } else {
+      const amountValidation = validateAmount(amount);
+      if (!amountValidation.valid) {
+        errors.push(amountValidation.error!);
+      }
+    }
 
+    // Validate currency
+    if (!currency) {
+      errors.push("currency is required");
+    } else {
+      const currencyValidation = validateCurrency(currency);
+      if (!currencyValidation.valid) {
+        errors.push(currencyValidation.error!);
+      }
+    }
+
+    // Validate recipient address using ethers.isAddress()
     if (!recipient) {
       errors.push("recipient is required");
     } else if (!isValidEthereumAddress(recipient)) {
-      errors.push("recipient must be a valid Ethereum address");
+      errors.push("recipient must be a valid Ethereum address (checksum validated)");
+    } else {
+      // Additional check: ensure not zero address
+      if (recipient === ethers.ZeroAddress) {
+        errors.push("recipient cannot be the zero address");
+      }
     }
 
+    // Validate condition
     if (!condition) {
       errors.push("condition is required");
     } else {
-      if (!condition.type) errors.push("condition.type is required");
-      else if (!["manual", "price-below"].includes(condition.type)) {
+      if (!condition.type) {
+        errors.push("condition.type is required");
+      } else if (!["manual", "price-below"].includes(condition.type)) {
         errors.push("condition.type must be 'manual' or 'price-below'");
       }
 
       if (!condition.value) {
         errors.push("condition.value is required");
-      } else if (condition.type === "price-below" && isNaN(Number(condition.value))) {
-        errors.push("condition.value must be a valid number for price-below type");
+      } else if (condition.type === "price-below") {
+        const priceValidation = validatePriceThreshold(condition.value);
+        if (!priceValidation.valid) {
+          errors.push(priceValidation.error!);
+        }
       }
     }
 
+    // Return validation errors
     if (errors.length > 0) {
+      // Log invalid input attempt
+      auditLogger.invalidInput(request.id, {
+        endpoint: '/intents',
+        errors,
+        ip: request.ip,
+      });
+
       const response: ApiResponse = {
         status: "error",
         code: "VALIDATION_ERROR",
@@ -74,15 +247,32 @@ export async function createIntent(
       return;
     }
 
-    // Create intent
+    // ============================================
+    // Create Intent
+    // ============================================
+
+    // Sanitize and normalize inputs
+    const sanitizedAmount = sanitizeString(amount!, 32);
+    const sanitizedCurrency = sanitizeString(currency!, 10).toUpperCase();
+    const normalizedRecipient = ethers.getAddress(recipient!); // Checksum address
+
     const newIntent = intentService.create({
-      amount: amount as string,
-      currency: currency as string,
-      recipient: recipient as string,
+      amount: sanitizedAmount,
+      currency: sanitizedCurrency,
+      recipient: normalizedRecipient,
       condition: {
         type: condition!.type as "manual" | "price-below",
-        value: condition!.value as string,
+        value: sanitizeString(condition!.value!, 32),
       },
+    });
+
+    // Audit log: intent created
+    auditLogger.intentCreated(newIntent.intentId, request.id, {
+      amount: sanitizedAmount,
+      currency: sanitizedCurrency,
+      recipient: normalizedRecipient,
+      conditionType: condition!.type!,
+      creatorIp: request.ip,
     });
 
     // Evaluate intent using Agent
@@ -234,6 +424,32 @@ export async function executeIntent(
       return;
     }
 
+    // SECURITY FIX: Verify intent ownership before execution
+    // The authenticated user (via wallet or API key) must be authorized to execute
+    const authRequest = request as unknown as { auth?: { type: string; walletAddress?: string; apiKeyId?: string; permissions?: string[] } };
+
+    if (authRequest.auth?.type === 'wallet') {
+      // For wallet auth, the wallet must be the intent creator (owner)
+      const isOwner = intentService.verifyOwnership(id, authRequest.auth.walletAddress || '');
+      if (!isOwner) {
+        request.server.log.warn(
+          { intentId: id, walletAddress: authRequest.auth.walletAddress },
+          '[Controller] OWNERSHIP VIOLATION - Wallet not authorized to execute intent'
+        );
+        const response: ApiResponse = {
+          status: "error",
+          code: "INTENT_OWNERSHIP_VIOLATION",
+          message: "You are not authorized to execute this intent. Only the creator can execute.",
+          details: {
+            traceId: request.id,
+          },
+        };
+        reply.code(403).send(response);
+        return;
+      }
+    }
+    // API keys with 'execute' permission can execute any intent (for backend services)
+
     // Security: Prevent re-execution of already executed or failed intents
     if (intent.status === "executed" || intent.status === "failed") {
       request.server.log.warn(
@@ -298,6 +514,16 @@ export async function executeIntent(
       '[Controller] Intent execution completed'
     );
 
+    // Audit log: intent executed
+    if (txHash) {
+      auditLogger.intentExecuted(id, request.id, {
+        txHash,
+        amount: intent.amount,
+        recipient: intent.recipient,
+        executedBy: 'manual',
+      });
+    }
+
     const responseData = {
       ...intent,
       status: newStatus,
@@ -328,6 +554,12 @@ export async function executeIntent(
 
     // Mark intent as failed
     intentService.updateStatus(id, "failed");
+
+    // Audit log: intent failed
+    auditLogger.intentFailed(id, request.id, {
+      reason: decodedError || 'Unknown error',
+      errorCode: 'EXECUTION_FAILED',
+    });
 
     const response: ApiResponse = {
       status: "error",
@@ -446,11 +678,27 @@ export async function confirmDeposit(
     const { id } = request.params;
     const { txHash } = request.body;
 
+    // Validate txHash format
     if (!txHash) {
       const response: ApiResponse = {
         status: "error",
         code: "MISSING_TX_HASH",
         message: "txHash is required",
+      };
+      reply.code(400).send(response);
+      return;
+    }
+
+    if (!isValidTxHash(txHash)) {
+      auditLogger.invalidInput(request.id, {
+        endpoint: `/intents/${id}/confirm-deposit`,
+        errors: ['Invalid transaction hash format'],
+        ip: request.ip,
+      });
+      const response: ApiResponse = {
+        status: "error",
+        code: "INVALID_TX_HASH",
+        message: "txHash must be a valid 66-character hex string (0x...)",
       };
       reply.code(400).send(response);
       return;
@@ -479,7 +727,7 @@ export async function confirmDeposit(
     }
 
     // Verify transaction on-chain
-    const rpcUrl = process.env.RPC_URL || "https://evm-t3.cronos.org";
+    const rpcUrl = process.env.RPC_URL || "https://rpc.sepolia.mantle.xyz";
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const receipt = await provider.getTransactionReceipt(txHash);
 
@@ -530,6 +778,12 @@ export async function confirmDeposit(
       { intentId: id, txHash, amount: depositedAmount },
       "[Controller] Deposit confirmed"
     );
+
+    // Audit log: intent funded
+    auditLogger.intentFunded(id, request.id, {
+      txHash,
+      amount: depositedAmount,
+    });
 
     const response: ApiResponse = {
       status: "success",

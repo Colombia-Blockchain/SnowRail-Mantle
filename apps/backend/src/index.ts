@@ -16,6 +16,12 @@ import { initializeProviderService, getProviderService } from './services/provid
 import { mcpPlugin } from './mcp';
 import { initializeZKServices, getZKStatus } from './zk';
 
+// WP1 Foundation imports
+import { initializeFeatureFlags, getFeatureFlags, getFeatureFlagsStatus } from './config/feature-flags';
+import { initializeEnvConfig, getEnvConfig, getEnvConfigStatus } from './config/env';
+import { initializeRegistry, getRegistry } from './core/registry';
+import { featureGatePlugin } from './middleware/feature-gate';
+
 dotenv.config();
 
 interface ApiResponse<T = Record<string, unknown> | null> {
@@ -25,6 +31,8 @@ interface ApiResponse<T = Record<string, unknown> | null> {
   data?: T;
   details?: Record<string, unknown>;
 }
+
+import crypto from 'crypto';
 
 const server = Fastify({
   logger: {
@@ -38,6 +46,8 @@ const server = Fastify({
       },
     },
   },
+  // SECURITY: Generate unique request IDs for tracing
+  genReqId: () => crypto.randomUUID(),
 });
 
 // Add BigInt serialization support for JSON responses
@@ -46,7 +56,36 @@ const server = Fastify({
   return this.toString();
 };
 
-// Security middleware
+// ============================================
+// WP1 FOUNDATION: Initialize configuration FIRST
+// CRITICAL: This must happen before any other initialization
+// ============================================
+
+// Initialize environment configuration
+const envConfig = initializeEnvConfig(server);
+
+// Initialize feature flags (determines legacy vs x402 mode)
+const featureFlags = initializeFeatureFlags(server);
+
+// Initialize module registry (for LEGO architecture)
+const registry = initializeRegistry(server);
+
+// Log the foundation initialization summary
+server.log.info(
+  {
+    protocol: featureFlags.protocol,
+    isLegacyMode: featureFlags.isLegacyMode,
+    hasV2Features: featureFlags.hasV2Features,
+    network: envConfig.network.name,
+    chainId: envConfig.network.chainId,
+  },
+  '[Foundation] WP1 initialization complete'
+);
+
+// ============================================
+// SECURITY MIDDLEWARE (unchanged from V1)
+// ============================================
+
 server.register(helmet, {
   contentSecurityPolicy: process.env.NODE_ENV === 'production',
   xFrameOptions: {
@@ -65,6 +104,46 @@ server.register(cors, {
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
 });
 
+// Register feature gate plugin (adds helpers to request/server)
+server.register(featureGatePlugin);
+
+// ============================================
+// SECURITY: Request ID and Audit Logging
+// ============================================
+
+// Add request ID to all responses for tracing
+server.addHook('onRequest', async (request, reply) => {
+  // Add request ID header for client-side correlation
+  reply.header('X-Request-ID', request.id);
+});
+
+// SECURITY: Audit logging for sensitive operations
+server.addHook('onResponse', async (request, reply) => {
+  // Log all non-GET requests for audit trail
+  if (request.method !== 'GET' && request.method !== 'OPTIONS') {
+    const sensitiveEndpoints = ['/api/intents', '/api/mixer', '/api/lending', '/api/swap'];
+    const isSensitive = sensitiveEndpoints.some((ep) => request.url.startsWith(ep));
+
+    if (isSensitive) {
+      request.log.info({
+        audit: true,
+        requestId: request.id,
+        method: request.method,
+        url: request.url,
+        statusCode: reply.statusCode,
+        // SECURITY: Don't log request body - may contain sensitive data
+        ip: request.ip,
+        userAgent: request.headers['user-agent']?.slice(0, 100),
+      }, '[AUDIT] Sensitive operation');
+    }
+  }
+});
+
+// ============================================
+// V1 SERVICE INITIALIZATION (unchanged - always runs)
+// CRITICAL: This ensures V1 legacy behavior is preserved
+// ============================================
+
 // Initialize synchronous services first
 initializeWalletService(server);
 initializePriceService(server);
@@ -79,7 +158,11 @@ initializeMixerService(server).catch((err) => {
   server.log.error({ err }, '[MixerService] Async initialization failed');
 });
 
-// Register API routes
+// ============================================
+// V1 API ROUTES (unchanged - always registered)
+// ============================================
+
+// Register V1 API routes
 server.register(intentRoutes, { prefix: '/api' });
 server.register(agentRoutes, { prefix: '/api' });
 server.register(mixerRoutes, { prefix: '/api' });
@@ -88,7 +171,58 @@ server.register(providerRoutes, { prefix: '/api' });  // LEGO provider routes fo
 // Register MCP plugin for AI assistant integration
 server.register(mcpPlugin);
 
-// Health check endpoint
+// ============================================
+// V2 MODULE INITIALIZATION (conditional on feature flags)
+// Only loads if SNOWRAIL_PROTOCOL=x402 and specific features enabled
+// ============================================
+
+async function initializeV2Modules(): Promise<void> {
+  if (featureFlags.isLegacyMode) {
+    server.log.debug('[V2] Skipping V2 module initialization - legacy mode');
+    return;
+  }
+
+  server.log.info('[V2] Initializing V2 modules based on feature flags');
+
+  // AP2 Module (Agent Protocol v2)
+  if (featureFlags.ap2Enabled) {
+    server.log.info('[V2] AP2 module enabled - will initialize when implemented');
+    // Future: registry.register(ap2ModuleDefinition);
+  }
+
+  // X402 Module (Payment Protocol Extensions)
+  if (featureFlags.x402Enabled) {
+    server.log.info('[V2] X402 module enabled - will initialize when implemented');
+    // Future: registry.register(x402ModuleDefinition);
+  }
+
+  // OPA Module (Open Policy Agent)
+  if (featureFlags.opaEnabled) {
+    server.log.info('[V2] OPA module enabled - will initialize when implemented');
+    // Future: registry.register(opaModuleDefinition);
+  }
+
+  // Sentinel Module (Monitoring/Alerting)
+  if (featureFlags.sentinelEnabled) {
+    server.log.info('[V2] Sentinel module enabled - will initialize when implemented');
+    // Future: registry.register(sentinelModuleDefinition);
+  }
+
+  // EigenLayer Module (AVS Integration)
+  if (featureFlags.eigenEnabled) {
+    server.log.info('[V2] Eigen module enabled - will initialize when implemented');
+    // Future: registry.register(eigenModuleDefinition);
+  }
+
+  // Initialize all registered V2 modules
+  await registry.initializeAll();
+}
+
+// ============================================
+// HEALTH CHECK ENDPOINTS
+// ============================================
+
+// Basic health check endpoint (unchanged)
 server.get<{ Reply: ApiResponse }>('/health', async () => {
   const response: ApiResponse = {
     status: 'success',
@@ -101,6 +235,9 @@ server.get<{ Reply: ApiResponse }>('/health', async () => {
       environment: process.env.NODE_ENV || 'development',
       network: process.env.NETWORK_NAME || 'Mantle Sepolia',
       chainId: process.env.CHAIN_ID || '5003',
+      // WP1: Add protocol mode info
+      protocol: featureFlags.protocol,
+      isLegacyMode: featureFlags.isLegacyMode,
     },
   };
   return response;
@@ -112,12 +249,24 @@ server.get<{ Reply: ApiResponse }>('/health/ready', async () => {
   getWalletService();
   const providerStatus = await getProviderService().getStatus();
 
+  // WP1: Include registry and feature flag status
+  const registryStatus = getRegistry().getStatus();
+  const flagStatus = getFeatureFlagsStatus();
+
   const response: ApiResponse = {
     status: 'success',
     code: 'READINESS_CHECK_OK',
     message: 'SnowRail on Mantle - Ready for 4 Hackathon Tracks',
     data: {
       timestamp: new Date().toISOString(),
+      // WP1: Foundation status
+      foundation: {
+        protocol: featureFlags.protocol,
+        isLegacyMode: featureFlags.isLegacyMode,
+        hasV2Features: featureFlags.hasV2Features,
+        registeredModules: registryStatus.totalModules,
+        readyModules: registryStatus.readyModules,
+      },
       services: {
         wallet: { initialized: true },
         agent: { initialized: true },
@@ -164,6 +313,47 @@ server.get<{ Reply: ApiResponse }>('/health/ready', async () => {
   return response;
 });
 
+// WP1: New foundation status endpoint
+server.get<{ Reply: ApiResponse }>('/health/foundation', async () => {
+  const envStatus = getEnvConfigStatus();
+  const flagStatus = getFeatureFlagsStatus();
+  const registryHealth = await getRegistry().checkAllHealth();
+  const registryStatus = getRegistry().getStatus();
+
+  const response: ApiResponse = {
+    status: registryHealth.overall === 'healthy' ? 'success' : 'warning',
+    code: 'FOUNDATION_STATUS',
+    message: `WP1 Foundation - ${registryHealth.overall}`,
+    data: {
+      timestamp: new Date().toISOString(),
+      featureFlags: flagStatus.flags,
+      environment: {
+        initialized: envStatus.initialized,
+        network: envStatus.config?.network.name,
+        chainId: envStatus.config?.network.chainId,
+        isProduction: envStatus.config?.isProduction,
+        validation: envStatus.validation,
+      },
+      registry: {
+        status: registryStatus,
+        health: registryHealth,
+      },
+      v2Features: {
+        ap2: featureFlags.ap2Enabled,
+        x402: featureFlags.x402Enabled,
+        opa: featureFlags.opaEnabled,
+        sentinel: featureFlags.sentinelEnabled,
+        eigen: featureFlags.eigenEnabled,
+      },
+    },
+  };
+  return response;
+});
+
+// ============================================
+// ERROR HANDLING
+// ============================================
+
 // Global error handler
 server.setErrorHandler((error, request, reply) => {
   const traceId = request.id || 'unknown';
@@ -183,26 +373,51 @@ server.setErrorHandler((error, request, reply) => {
   reply.code(error.statusCode || 500).send(response);
 });
 
+// ============================================
+// SERVER STARTUP
+// ============================================
+
 const start = async () => {
   try {
     const port = parseInt(process.env.PORT || '3001', 10);
     const host = process.env.HOST || '0.0.0.0';
 
+    // WP1: Initialize V2 modules (if any enabled)
+    await initializeV2Modules();
+
     await server.listen({ port, host });
     showBanner(port, process.env.NETWORK_NAME || 'Mantle Sepolia');
+
+    // WP1: Enhanced startup logging
     server.log.info(`Server running on http://${host}:${port}`);
+    server.log.info({
+      protocol: featureFlags.protocol,
+      legacyMode: featureFlags.isLegacyMode,
+      v2Features: featureFlags.hasV2Features ? 'enabled' : 'disabled',
+    }, '[Foundation] SnowRail ready');
+
   } catch (err) {
     server.log.error(err);
     process.exit(1);
   }
 };
 
-// Graceful shutdown
+// ============================================
+// GRACEFUL SHUTDOWN
+// ============================================
+
 process.on('SIGINT', async () => {
   server.log.info('Shutting down gracefully...');
+
+  // WP1: Shutdown registry modules
+  try {
+    await getRegistry().shutdown();
+  } catch (err) {
+    server.log.error({ err }, '[Registry] Shutdown error');
+  }
+
   await server.close();
   process.exit(0);
 });
 
 start();
-

@@ -4,6 +4,8 @@ import { intentService } from '../../services/intent-service';
 import { getAgentService } from '../../services/agent-service';
 import { Orchestrator } from '../../x402/orchestrator';
 import { decodeCustomError } from '../../utils/error-decoder';
+import { requirePermission } from '../../middleware/auth-middleware';
+import { auditLogger } from '../../utils/audit-logger';
 
 // Agent trigger handler
 async function triggerAgent(
@@ -111,6 +113,14 @@ async function triggerAgent(
             { intentId, status: newStatus, txHash },
             '[AgentRoute] Intent execution completed successfully'
           );
+
+          // Audit log: successful execution via agent
+          auditLogger.intentExecuted(intentId, request.id, {
+            txHash,
+            amount: intent.amount,
+            recipient: intent.recipient,
+            executedBy: 'agent',
+          });
         } else {
           request.server.log.warn(
             { intentId },
@@ -126,6 +136,12 @@ async function triggerAgent(
 
         newStatus = 'failed';
         intentService.updateStatus(intentId, 'failed');
+
+        // Audit log: execution failed
+        auditLogger.intentFailed(intentId, request.id, {
+          reason: decodedError || 'Orchestrator execution failed',
+          errorCode: 'EXECUTION_FAILED',
+        });
 
         const response: ApiResponse = {
           status: 'error',
@@ -179,6 +195,31 @@ async function triggerAgent(
   }
 }
 
+/**
+ * Agent Routes
+ *
+ * SECURITY:
+ * - Agent trigger is a sensitive operation that can execute transactions
+ * - Requires 'execute' permission (highest privilege level)
+ * - All triggers are audit logged
+ */
 export async function agentRoutes(fastify: FastifyInstance) {
+  const isAuthEnabled = process.env.ENABLE_AUTH !== 'false';
+
+  if (isAuthEnabled) {
+    // Add permission check for agent routes
+    fastify.addHook('preHandler', requirePermission('execute'));
+  }
+
+  // Agent trigger - requires execute permission (most sensitive operation)
   fastify.post<{ Body: { intentId: string } }>('/agent/trigger', triggerAgent);
+
+  // Log security configuration
+  if (!isAuthEnabled) {
+    fastify.log.warn(
+      '[AgentRoutes] SECURITY WARNING: Authentication is DISABLED for agent routes!'
+    );
+  } else {
+    fastify.log.info('[AgentRoutes] Authentication enabled - execute permission required');
+  }
 }

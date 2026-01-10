@@ -18,21 +18,40 @@ USER (Wallet)
        │ 2. Create Intent / Trigger Agent
        ↓
 ┌──────────────────────────────────────────────────────────────┐
-│  BACKEND (Fastify, Port 3001)                               │
+│  BACKEND (Fastify, Port 4000)                               │
 │  ├── Intent Routes                                          │
-│  │   ├── POST /api/intents          (Create)                │
+│  │   ├── POST /api/intents           (Create)               │
 │  │   ├── GET /api/intents            (List)                 │
-│  │   └── GET /api/intents/:id        (Get One)              │
+│  │   ├── GET /api/intents/:id        (Get One)              │
+│  │   ├── POST /api/intents/:id/deposit    (Prepare Deposit) │
+│  │   ├── POST /api/intents/:id/confirm-deposit (Confirm)    │
+│  │   └── POST /api/intents/:id/execute     (Execute)        │
 │  ├── Agent Routes                                           │
 │  │   └── POST /api/agent/trigger     (Trigger Agent)        │
+│  ├── Mixer Routes (ZK Privacy)                              │
+│  │   ├── GET /api/mixer/info                                │
+│  │   ├── POST /api/mixer/generate-note                      │
+│  │   ├── POST /api/mixer/deposit                            │
+│  │   ├── POST /api/mixer/confirm-deposit                    │
+│  │   ├── POST /api/mixer/withdraw                           │
+│  │   └── POST /api/mixer/simulate-withdraw                  │
+│  ├── Provider Routes (LEGO Architecture)                    │
+│  │   ├── /api/providers/oracle/*     (Pyth Oracle)          │
+│  │   ├── /api/providers/rwa/*        (USDY/mETH)            │
+│  │   ├── /api/providers/swap/*       (Merchant Moe)         │
+│  │   ├── /api/providers/lending/*    (Lendle)               │
+│  │   └── /api/providers/kyc/*        (KYC Attestations)     │
 │  ├── Services                                               │
 │  │   ├── IntentService               (Store & Manage)       │
 │  │   ├── AgentService                (AI Logic)             │
 │  │   ├── WalletService               (Key Management)       │
+│  │   ├── MixerService                (ZK Privacy)           │
+│  │   ├── ProviderService             (LEGO Providers)       │
 │  │   └── Orchestrator                (x402 Execution)       │
 │  └── Health Endpoints                                       │
 │      ├── GET /health                                        │
-│      └── GET /health/ready                                  │
+│      ├── GET /health/ready                                  │
+│      └── GET /health/foundation                             │
 └──────────────────────────────────────────────────────────────┘
        │
        │ 3. Agent Evaluates Intent
@@ -62,6 +81,17 @@ USER (Wallet)
 
 ## API Integration
 
+### Intent Flow (with Treasury Deposits)
+
+```
+1. Create Intent  →  POST /api/intents
+2. Deposit Funds  →  POST /api/intents/:id/deposit (get TX data)
+                  →  Frontend signs & sends TX
+                  →  POST /api/intents/:id/confirm-deposit
+3. Execute        →  POST /api/intents/:id/execute
+                     (or POST /api/agent/trigger)
+```
+
 ### Create Intent
 ```
 POST /api/intents
@@ -83,11 +113,15 @@ Response:
 }
 ```
 
-### List Intents
+### Deposit to Intent (Frontend Signs)
 ```
-GET /api/intents
+POST /api/intents/:id/deposit
 
-Response: PaymentIntent[]
+Response:
+{
+  tx: { to, value, data },  // Frontend signs this
+  instructions: [...]
+}
 ```
 
 ### Trigger Agent
@@ -112,6 +146,18 @@ Response:
   }
 }
 ```
+
+### Provider Endpoints (50+ total)
+```
+Oracle:   GET /api/providers/oracle/price/:base/:quote
+RWA:      GET /api/providers/rwa/yield/:asset
+Swap:     GET /api/providers/swap/quote
+Lending:  POST /api/providers/lending/supply
+KYC:      GET /api/providers/kyc/status/:address
+Mixer:    POST /api/mixer/deposit
+```
+
+See [LLM_API_REFERENCE.md](./docs/LLM_API_REFERENCE.md) for complete documentation.
 
 ---
 
@@ -190,11 +236,13 @@ T+4.5s:  Frontend receives response
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
-| 404 on API calls | Backend port wrong | Check `NEXT_PUBLIC_API_URL=http://localhost:3001` |
+| 404 on API calls | Backend port wrong | Check `NEXT_PUBLIC_API_URL=http://localhost:4000` |
 | Wallet won't connect | Chain mismatch | Switch to Mantle Sepolia (5003) |
 | Agent always skips | Conditions not met | Use "Manual" trigger |
 | TX fails | No gas | Ensure wallet has testnet MNT |
 | CORS errors | Origin not allowed | Check backend CORS config |
+| 402 on execute | Intent not funded | Call `/intents/:id/deposit` first |
+| ZK proof fails | Gas too low | Use gasLimit: 300000000 for mixer withdraw |
 
 ---
 

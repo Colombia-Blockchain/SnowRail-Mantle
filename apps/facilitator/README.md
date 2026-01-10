@@ -1,6 +1,8 @@
 # Snowrail x402 Facilitator
 
-Facilitator service for the x402 HTTP payment protocol on Cronos network. Handles payment verification and on-chain settlement via EIP-3009.
+Facilitator service for the x402 HTTP payment protocol. Handles payment verification and on-chain settlement via EIP-3009.
+
+> **Note:** This facilitator supports both Cronos and Mantle networks. Configure via environment variables.
 
 ## Quick Start
 
@@ -16,9 +18,9 @@ npm run dev
 |----------|-------------|---------|
 | `PORT` | Server port | `3002` |
 | `PRIVATE_KEY` | Facilitator wallet private key | Required |
-| `RPC_URL` | Cronos RPC endpoint | `https://evm-t3.cronos.org` |
-| `CHAIN_ID` | Network chain ID | `338` |
-| `USDC_CONTRACT_ADDRESS` | USDC token address | Cronos testnet USDC |
+| `RPC_URL` | Network RPC endpoint | `https://rpc.sepolia.mantle.xyz` |
+| `CHAIN_ID` | Network chain ID | `5003` (Mantle Sepolia) |
+| `USDC_CONTRACT_ADDRESS` | USDC token address | Network-specific |
 
 ## API Endpoints
 
@@ -96,9 +98,11 @@ Base64-encoded JSON:
 - **eip-3009**: USDC transfers via `transferWithAuthorization`
 - **exact**: Native CRO/TCRO transfers
 
-## Networks
+## Supported Networks
 
-| Network | Chain ID |
-|---------|----------|
-| Cronos Testnet | 338 |
-| Cronos Mainnet | 25 |
+| Network | Chain ID | RPC URL |
+|---------|----------|---------|
+| Mantle Sepolia | 5003 | `https://rpc.sepolia.mantle.xyz` |
+| Mantle Mainnet | 5000 | `https://rpc.mantle.xyz` |
+| Cronos Testnet | 338 | `https://evm-t3.cronos.org` |
+| Cronos Mainnet | 25 | `https://evm.cronos.org` |

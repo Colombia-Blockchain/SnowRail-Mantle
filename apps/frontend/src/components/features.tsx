@@ -1,79 +1,61 @@
 'use client';
 
-interface Feature {
-  icon: string;
-  title: string;
-  description: string;
-}
-
-const features: Feature[] = [
+const features = [
   {
-    icon: '🤖',
-    title: 'AI-Powered Decisions',
-    description: 'Advanced AI agents analyze market conditions and execute strategies autonomously',
+    title: 'Autonomous Allocators',
+    desc: 'AI agents that manage treasury rebalacing, yield farming, and risk mitigation 24/7.',
+    className: 'md:col-span-2 md:row-span-2',
+    accent: 'bg-blue-500',
   },
   {
-    icon: '⚡',
-    title: 'Real-time Execution',
-    description: 'Instant transaction processing with sub-second decision latency',
+    title: 'Privacy Mixer',
+    desc: 'Unlinkable asset movements using zero-knowledge recursive proofs.',
+    className: 'md:col-span-1 md:row-span-1',
+    accent: 'bg-cyan-500',
   },
   {
-    icon: '🔒',
-    title: 'Secure & Auditable',
-    description: 'All transactions signed and recorded on-chain for complete transparency',
+    title: 'RWA Yields',
+    desc: 'Access institutional-grade yields from tokenized real-world assets.',
+    className: 'md:col-span-1 md:row-span-1',
+    accent: 'bg-indigo-500',
   },
   {
-    icon: '💎',
-    title: 'Multi-Asset Support',
-    description: 'Manage diverse crypto portfolios with intelligent rebalancing',
+    title: 'Pyth Oracle Proofs',
+    desc: 'Cryptographically verified market data for high-assurance execution.',
+    className: 'md:col-span-1 md:row-span-1',
+    accent: 'bg-emerald-500',
   },
   {
-    icon: '📊',
-    title: 'Advanced Analytics',
-    description: 'Real-time dashboards with deep insights into treasury performance',
-  },
-  {
-    icon: '🔄',
-    title: 'Continuous Learning',
-    description: 'AI agents improve strategies over time through reinforcement learning',
+    title: 'Mantle Ecosystem',
+    desc: 'Built on the hyperscale L2 for ultra-low costs and high throughput.',
+    className: 'md:col-span-2 md:row-span-1',
+    accent: 'bg-white',
   },
 ];
 
 export function Features() {
   return (
-    <section className="py-24 bg-gradient-to-b from-slate-900 via-slate-900/95 to-slate-950 relative overflow-hidden">
-      {/* Background decoration */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-1/2 -left-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-1/2 -right-1/2 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
+    <section className="py-24 bg-slate-950 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div className="text-center mb-20">
+        <h2 className="text-sm font-black text-cyan-400 tracking-[0.3em] uppercase mb-4">Capabilities</h2>
+        <h3 className="text-4xl sm:text-6xl font-black text-white tracking-tighter uppercase">Intelligence Layer</h3>
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl sm:text-5xl font-bold mb-6 bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
-            Powerful Features
-          </h2>
-          <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-            Everything you need for autonomous treasury management
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {features.map((feature, index) => (
-            <div
-              key={index}
-              className="group p-8 bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-xl hover:border-blue-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/10 hover:-translate-y-1"
-            >
-              <div className="text-4xl mb-4">{feature.icon}</div>
-              <h3 className="text-xl font-bold text-white mb-3 group-hover:text-blue-400 transition-colors">
-                {feature.title}
-              </h3>
-              <p className="text-gray-400 group-hover:text-gray-300 transition-colors">
-                {feature.description}
-              </p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[200px]">
+        {features.map((f, i) => (
+          <div 
+            key={i} 
+            className={`group relative overflow-hidden rounded-[2.5rem] bg-white/[0.03] border border-white/5 p-10 hover:bg-white/[0.05] transition-all duration-500 ${f.className}`}
+          >
+            <div className={`absolute top-0 left-0 w-1 h-24 ${f.accent} opacity-20 group-hover:h-full transition-all duration-700`} />
+            <div className="relative z-10">
+              <h4 className="text-2xl font-black text-white tracking-tight uppercase mb-4">{f.title}</h4>
+              <p className="text-gray-400 font-medium leading-relaxed max-w-md">{f.desc}</p>
             </div>
-          ))}
-        </div>
+            
+            <div className="absolute -bottom-8 -right-8 w-32 h-32 bg-white/5 rounded-full blur-3xl group-hover:bg-blue-500/10 transition-colors" />
+          </div>
+        ))}
       </div>
     </section>
   );

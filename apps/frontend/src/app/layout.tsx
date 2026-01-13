@@ -64,8 +64,8 @@ export default function RootLayout({
         `}</style>
         <div className="relative z-10">
           <Providers>
-            <Navbar />
-            <main className="pt-20 w-full">
+            {/* Navbar removed as it's handled by DashboardLayout internally */}
+            <main className="w-full">
               {children}
             </main>
           </Providers>

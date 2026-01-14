@@ -51,7 +51,7 @@ export function TriggerAgentButton({ intentId }: { intentId: string }) {
           ) : (
             <div className="p-3 bg-yellow-900/20 border border-yellow-700 rounded-lg text-yellow-300 text-sm">
               <p className="font-semibold">Agent Decision:</p>
-              <p>{data.reason || 'Agent skipped this intent based on current conditions'}</p>
+              <p>Agent skipped this intent based on current conditions</p>
             </div>
           )}
         </>
